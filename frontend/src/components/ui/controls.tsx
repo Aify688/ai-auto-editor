@@ -18,13 +18,13 @@ export function Button({
     <button
       {...rest}
       className={cx(
-        "inline-flex items-center justify-center gap-1.5 rounded font-medium transition-colors duration-150",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors duration-150",
         "disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/60",
         size === "sm" && "h-7 px-2.5 text-xs",
         size === "md" && "h-8 px-3 text-sm",
         size === "lg" && "h-10 px-4 text-base",
-        variant === "primary" && "bg-primary text-white hover:bg-primary-hover",
-        variant === "secondary" && "border border-line bg-panel2 text-fg hover:border-[#4A5160] hover:bg-[#2D323C]",
+        variant === "primary" && "bg-primary text-primary-ink hover:bg-primary-hover",
+        variant === "secondary" && "border border-line bg-panel2 text-fg hover:border-[#4A5160] hover:bg-raise",
         variant === "ghost" && "text-fg-muted hover:bg-panel2 hover:text-fg",
         variant === "danger" && "bg-danger/90 text-white hover:bg-danger",
         className,
@@ -49,7 +49,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cx(
-        "inline-flex h-7 w-7 items-center justify-center rounded text-fg-muted transition-colors duration-150",
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors duration-150",
         "hover:bg-panel2 hover:text-fg disabled:pointer-events-none disabled:opacity-35",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/60",
         active && "bg-primary-muted text-primary",
@@ -178,7 +178,7 @@ export function Segmented<T extends string | number>({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded border border-line bg-panel2 p-0.5">
+    <div role="radiogroup" aria-label={label} className="flex rounded-lg border border-line bg-app p-0.5">
       {options.map((o) => (
         <button
           key={String(o.value)}
@@ -187,8 +187,8 @@ export function Segmented<T extends string | number>({
           title={o.title}
           onClick={() => onChange(o.value)}
           className={cx(
-            "flex-1 rounded-[4px] px-2 py-1 text-xs transition-colors",
-            o.value === value ? "bg-primary text-white" : "text-fg-muted hover:text-fg",
+            "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+            o.value === value ? "bg-raise text-fg shadow-sm" : "text-fg-muted hover:text-fg",
           )}
         >
           {o.label}

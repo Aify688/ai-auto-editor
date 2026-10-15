@@ -60,7 +60,7 @@ function StylePicker() {
               on ? "border-primary bg-primary-muted" : "border-line bg-panel2 hover:border-[#4A5160]",
             )}
           >
-            <div className={cx("flex h-8 w-8 shrink-0 items-center justify-center rounded", on ? "bg-primary text-white" : "bg-panel text-fg-muted")}>
+            <div className={cx("flex h-8 w-8 shrink-0 items-center justify-center rounded", on ? "bg-primary text-primary-ink" : "bg-panel text-fg-muted")}>
               <Icon size={16} />
             </div>
             <div className="min-w-0 flex-1">

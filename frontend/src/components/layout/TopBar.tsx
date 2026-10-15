@@ -2,6 +2,7 @@ import { AlertCircle, Check, FolderOpen, Loader2, Redo2, Undo2, Upload } from "l
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../store/project";
 import { Button, IconButton } from "../ui/controls";
+import { WorkflowSteps } from "./WorkflowSteps";
 
 export function Logo() {
   return (
@@ -97,8 +98,8 @@ export function TopBar() {
   const hasEdl = useStore((s) => !!s.doc?.edl?.clips.length);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-panel px-3">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-panel px-3">
+      <div className="flex min-w-0 flex-1 basis-0 items-center gap-3">
         <Logo />
         <div className="h-5 w-px bg-line" />
         <IconButton label="Projects" onClick={() => openProjects(true)}>
@@ -107,7 +108,8 @@ export function TopBar() {
         <ProjectName />
         <SaveStatus />
       </div>
-      <div className="flex items-center gap-1">
+      <WorkflowSteps />
+      <div className="flex flex-1 basis-0 items-center justify-end gap-1">
         <IconButton label="Undo (⌘Z)" onClick={undo} disabled={!canUndo}>
           <Undo2 size={16} />
         </IconButton>

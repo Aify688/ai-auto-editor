@@ -1,14 +1,15 @@
 import {
-  AlertTriangle, Check, ChevronDown, Clapperboard, Film, Loader2, RectangleHorizontal, RectangleVertical, RotateCw,
-  Smartphone, Sparkles, Square, X, Zap,
+  AlertTriangle, Captions, Check, ChevronDown, Clapperboard, Film, Layers, Loader2, Music, RectangleHorizontal, RectangleVertical,
+  RotateCw, Smartphone, Sparkles, Square, Star, VolumeX, X, Zap,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cancelJob, isActive, retryJob, startJob } from "../../hooks/useJobs";
 import { fmtDuration } from "../../lib/format";
 import { layout } from "../../lib/layout";
 import { ASPECTS, STYLES } from "../../lib/styles";
 import { useStore } from "../../store/project";
 import type { AiSettings, Aspect, Job, ProjectDoc, Style } from "../../types";
+import { ClipProperties } from "../panels/ClipProperties";
 import { Button, Field, Segmented, Select, Slider, Toggle, cx } from "../ui/controls";
 
 const STYLE_ICON: Record<Style, typeof Zap> = { dynamic: Zap, cinematic: Clapperboard, vlog: Smartphone };
@@ -106,14 +107,69 @@ function FormatPicker() {
   );
 }
 
-function Advanced() {
-  const [open, setOpen] = useState(false);
+function AiOptions() {
   const st = useStore((s) => s.doc!.settings);
   const style = useStore((s) => s.doc!.style);
-  const audio = useStore((s) => s.media.filter((m) => m.kind === "audio" && m.status === "ready"));
   const transcription = useStore((s) => s.system?.transcription);
   const set = useSettings();
   const beatAvailable = style === "dynamic" && !!st.musicId;
+  const rows: { icon: typeof Star; label: string; hint: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void }[] = [
+    { icon: Captions, label: "Auto captions", hint: transcription && !transcription.ok ? "Speech-to-text not installed" : "Local Whisper",
+      on: st.captions, disabled: !transcription?.ok, onChange: (v) => set({ captions: v }) },
+    { icon: VolumeX, label: "Remove silence", hint: "Tighten pauses", on: st.removeSilence, onChange: (v) => set({ removeSilence: v }) },
+    { icon: Star, label: "Find highlights", hint: "Keep the best moments", on: st.highlightDetection, onChange: (v) => set({ highlightDetection: v }) },
+    { icon: Layers, label: "Transitions", hint: "Between clips", on: st.transitions,
+      onChange: (v) => set({ transitions: v }, (d) => ({ ...d.edl!, transition: v ? { ...STYLES[d.edl!.style].transition } : null })) },
+    { icon: Music, label: "Beat sync", hint: beatAvailable ? "Cuts land on the beat" : "Dynamic style + music",
+      on: st.beatSync && beatAvailable, disabled: !beatAvailable, onChange: (v) => set({ beatSync: v }) },
+  ];
+  return (
+    <div>
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-center justify-between gap-3 py-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <r.icon size={16} className="shrink-0 text-fg-muted" />
+            <div className="min-w-0">
+              <div className="text-sm text-fg">{r.label}</div>
+              <div className="truncate text-2xs text-fg-faint">{r.hint}</div>
+            </div>
+          </div>
+          <Toggle label={r.label} checked={r.on} disabled={r.disabled} onChange={r.onChange} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EditSummary() {
+  const edl = useStore((s) => s.doc?.edl ?? null);
+  if (!edl || !edl.clips.length) return null;
+  const chips = [
+    `${edl.clips.length} clips`,
+    fmtDuration(layout(edl).duration),
+    STYLES[edl.style].name,
+    edl.beat ? `${Math.round(60 / edl.beat)} BPM` : null,
+    edl.captions.length ? `${edl.captions.length} captions` : null,
+  ].filter(Boolean) as string[];
+  return (
+    <div className="mx-4 mb-4 rounded-lg border border-line bg-panel2 p-3">
+      <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+        <Check size={15} className="text-success" /> Edit ready
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {chips.map((c) => (
+          <span key={c} className="rounded-full bg-app px-2 py-0.5 text-2xs text-fg-muted">{c}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Advanced() {
+  const [open, setOpen] = useState(false);
+  const st = useStore((s) => s.doc!.settings);
+  const audio = useStore((s) => s.media.filter((m) => m.kind === "audio" && m.status === "ready"));
+  const set = useSettings();
 
   return (
     <section className="border-t border-line">
@@ -161,30 +217,18 @@ function Advanced() {
               </div>
             </Field>
           )}
-          <Field label="Automatic captions" hint={transcription && !transcription.ok ? "Speech-to-text not installed" : "Local Whisper"}>
-            <Toggle label="Automatic captions" checked={st.captions} disabled={!transcription?.ok} onChange={(v) => set({ captions: v })} />
-          </Field>
           {st.captions && (
             <Field label="Burn captions into video">
               <Toggle label="Burn captions" checked={st.burnCaptions} onChange={(v) => set({ burnCaptions: v }, (d) => ({ ...d.edl!, burnCaptions: v }))} />
             </Field>
           )}
-          <Field label="Remove silence"><Toggle label="Remove silence" checked={st.removeSilence} onChange={(v) => set({ removeSilence: v })} /></Field>
           <Field label="Scene detection"><Toggle label="Scene detection" checked={st.sceneDetection} onChange={(v) => set({ sceneDetection: v })} /></Field>
-          <Field label="Highlight detection"><Toggle label="Highlight detection" checked={st.highlightDetection} onChange={(v) => set({ highlightDetection: v })} /></Field>
-          <Field label="Auto transitions">
-            <Toggle label="Auto transitions" checked={st.transitions}
-              onChange={(v) => set({ transitions: v }, (d) => ({ ...d.edl!, transition: v ? { ...STYLES[d.edl!.style].transition } : null }))} />
-          </Field>
           <Field label="Audio normalization">
             <Toggle label="Audio normalization" checked={st.normalizeAudio}
               onChange={(v) => set({ normalizeAudio: v }, (d) => ({ ...d.edl!, audio: { ...d.edl!.audio, normalize: v } }))} />
           </Field>
           <Field label="Smart cropping" hint={st.smartCrop ? "Follows faces & motion" : "Blurred background fit"}>
             <Toggle label="Smart cropping" checked={st.smartCrop} onChange={(v) => set({ smartCrop: v }, (d) => ({ ...d.edl!, fit: v ? "crop" : "blur" }))} />
-          </Field>
-          <Field label="Beat sync" hint={beatAvailable ? "Cuts land on the beat" : "Dynamic style + music"}>
-            <Toggle label="Beat sync" checked={st.beatSync && beatAvailable} disabled={!beatAvailable} onChange={(v) => set({ beatSync: v })} />
           </Field>
         </div>
       )}
@@ -283,20 +327,37 @@ function GenerateArea() {
 }
 
 export function AiEditPanel() {
+  const [tab, setTab] = useState<"ai" | "props">("ai");
+  const selected = useStore((s) => s.selectedClipId);
+  useEffect(() => {
+    if (selected) setTab("props");
+  }, [selected]);
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-panel" aria-label="AI Auto Edit">
-      <div className="px-4 pb-3 pt-4">
-        <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-fg">
-          <Sparkles size={15} className="text-primary" /> AI Auto Edit
-        </h2>
-        <p className="mt-0.5 text-xs text-fg-muted">Generate a polished video in one click.</p>
+    <aside className="flex w-[340px] shrink-0 flex-col border-l border-line bg-panel" aria-label="AI Auto Edit">
+      <div className="px-4 pb-3 pt-3">
+        <Segmented
+          label="Panel"
+          value={tab}
+          onChange={setTab}
+          options={[{ value: "ai", label: "AI Edit" }, { value: "props", label: "Properties" }]}
+        />
       </div>
-      <div className="flex-1 overflow-y-auto">
-        <Section title="Editing style"><StylePicker /></Section>
-        <Section title="Output format"><FormatPicker /></Section>
-        <Advanced />
-      </div>
-      <GenerateArea />
+      {tab === "ai" ? (
+        <>
+          <div className="flex-1 overflow-y-auto">
+            <EditSummary />
+            <Section title="Editing style"><StylePicker /></Section>
+            <Section title="Output format"><FormatPicker /></Section>
+            <Section title="AI options"><AiOptions /></Section>
+            <Advanced />
+          </div>
+          <GenerateArea />
+        </>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <ClipProperties />
+        </div>
+      )}
     </aside>
   );
 }

@@ -1,4 +1,4 @@
-import { AlertCircle, Film, Image as ImageIcon, Loader2, Music, Plus, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
+import { AlertCircle, Check, Film, Image as ImageIcon, Loader2, Music, Plus, RotateCw, Trash2, UploadCloud, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { ACCEPT, uploadFiles } from "../../hooks/useUpload";
 import { fmtBytes, fmtDuration, uid } from "../../lib/format";
@@ -99,7 +99,7 @@ function MediaCard({ m, index, onDragStart, onDrop }: {
       }}
       onClick={() => m.status === "ready" && useStore.getState().selectMedia(m.id)}
       className={cx(
-        "group relative cursor-pointer overflow-hidden rounded-md border bg-panel2 transition-colors",
+        "group relative cursor-pointer overflow-hidden rounded-xl border-2 bg-panel2 transition-colors",
         selected ? "border-primary" : "border-transparent hover:border-line",
         over && "ring-2 ring-primary/60",
       )}
@@ -127,8 +127,13 @@ function MediaCard({ m, index, onDragStart, onDrop }: {
           </div>
         )}
         {m.duration != null && m.kind !== "image" && (
-          <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-2xs tabular-nums text-fg">
+          <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/70 px-1.5 text-2xs tabular-nums text-fg">
             {fmtDuration(m.duration)}
+          </span>
+        )}
+        {usedInEdl && m.kind !== "audio" && (
+          <span className="absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-ink" title="Used in your edit">
+            <Check size={12} strokeWidth={3} />
           </span>
         )}
         {isMusic && (
@@ -140,7 +145,7 @@ function MediaCard({ m, index, onDragStart, onDrop }: {
               title="Add to timeline"
               aria-label="Add to timeline"
               onClick={(e) => { e.stopPropagation(); addToTimeline(m); }}
-              className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-fg hover:bg-primary"
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-fg hover:bg-primary hover:text-primary-ink"
             >
               <Plus size={13} />
             </button>
@@ -149,7 +154,7 @@ function MediaCard({ m, index, onDragStart, onDrop }: {
             title="Remove"
             aria-label="Remove file"
             onClick={(e) => { e.stopPropagation(); setConfirm(true); }}
-            className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-fg hover:bg-danger"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-fg hover:bg-danger"
           >
             <Trash2 size={12} />
           </button>
@@ -223,8 +228,7 @@ export function MediaPanel() {
       }}
     >
       <PanelHeader
-        title="Your Media"
-        subtitle="Manage files for your project."
+        title="Media"
         action={
           <Button variant="primary" size="sm" icon={<UploadCloud size={13} />} onClick={() => inputRef.current?.click()}>
             Upload Files
@@ -237,7 +241,7 @@ export function MediaPanel() {
         <button
           onClick={() => inputRef.current?.click()}
           className={cx(
-            "flex w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed py-4 text-center transition-colors",
+            "flex w-full flex-col items-center justify-center gap-1 rounded-xl border-[1.5px] border-dashed py-4 text-center transition-colors",
             dropping ? "border-primary bg-primary-muted" : "border-line hover:border-[#4A5160] hover:bg-panel2/50",
           )}
         >

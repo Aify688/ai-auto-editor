@@ -96,10 +96,10 @@ const Playhead = memo(function Playhead({ pps, height, onDrag }: { pps: number; 
     <div className="pointer-events-none absolute top-0 z-30" style={{ left: time * pps, height }}>
       <div
         onPointerDown={onDrag}
-        className="pointer-events-auto absolute -left-[6px] top-0 h-3 w-3 cursor-ew-resize rounded-b-sm bg-primary"
+        className="pointer-events-auto absolute -left-[6px] top-0 h-3 w-3 cursor-ew-resize rounded-b-md bg-fg"
         style={{ clipPath: "polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)" }}
       />
-      <div className="absolute left-[-0.5px] top-0 h-full w-px bg-primary" />
+      <div className="absolute left-[-0.5px] top-0 h-full w-px bg-fg" />
     </div>
   );
 });
@@ -220,8 +220,8 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
             onPointerDown={(e) => onClipDown(e, i)}
             title={`${lc.clip.label || m?.name} · ${(lc.clip.srcEnd - lc.clip.srcStart).toFixed(2)}s (source ${lc.clip.srcStart.toFixed(2)}–${lc.clip.srcEnd.toFixed(2)}s)`}
             className={cx(
-              "group absolute top-1 cursor-grab overflow-hidden rounded-[4px] bg-clip-video active:cursor-grabbing",
-              sel ? "z-10 ring-2 ring-primary" : "ring-1 ring-black/40 hover:ring-[#7FA6FF]/60",
+              "group absolute top-1 cursor-grab overflow-hidden rounded-md bg-clip-video active:cursor-grabbing",
+              sel ? "z-10 ring-2 ring-white" : "ring-1 ring-black/40 hover:ring-white/40",
               drag?.from === i && "opacity-40",
             )}
             style={{ left: left + 0.5, width: width - 1, height: TRACK.video - 8 }}
@@ -269,7 +269,7 @@ function AudioTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
   if (music) {
     return (
       <div className="relative" style={{ height: TRACK.audio }}>
-        <div className="absolute top-1 overflow-hidden rounded-[4px] bg-clip-audio" style={{ left: 0, width: lay.duration * pps, height: TRACK.audio - 8 }}>
+        <div className="absolute top-1 overflow-hidden rounded-md bg-clip-audio" style={{ left: 0, width: lay.duration * pps, height: TRACK.audio - 8 }}>
           <div className="absolute inset-0">
             {musicPeaks && music.duration ? (
               <Waveform peaks={musicPeaks} step={music.info.peakStep ?? 0.1} from={0} seconds={lay.duration} pps={pps} loop={music.duration} color="#9FD8B9" />
@@ -298,7 +298,7 @@ function AudioTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
 function ClipAudio({ m, from, seconds, left, pps }: { m?: Media; from: number; seconds: number; left: number; pps: number }) {
   const peaks = usePeaks(m?.hasAudio ? m.info.peaksUrl : undefined);
   return (
-    <div className="absolute top-1 overflow-hidden rounded-[4px] bg-clip-audio/60" style={{ left: left + 0.5, width: Math.max(2, seconds * pps - 1), height: TRACK.audio - 8 }}>
+    <div className="absolute top-1 overflow-hidden rounded-md bg-clip-audio/60" style={{ left: left + 0.5, width: Math.max(2, seconds * pps - 1), height: TRACK.audio - 8 }}>
       {m?.hasAudio ? (
         peaks && <Waveform peaks={peaks} step={m.info.peakStep ?? 0.1} from={from} seconds={seconds} pps={pps} color="#9FD8B9" />
       ) : (
@@ -321,7 +321,7 @@ function CaptionTrack({ edl, lay, pps }: { edl: Edl; lay: Layout; pps: number })
             useStore.getState().setNav("captions");
           }}
           title={s.caption.text}
-          className={cx("absolute top-1 overflow-hidden rounded-[4px] px-1.5 text-left text-2xs text-white hover:brightness-125", edl.burnCaptions ? "bg-clip-caption" : "bg-clip-caption/40")}
+          className={cx("absolute top-1 overflow-hidden rounded-md px-1.5 text-left text-2xs text-white hover:brightness-125", edl.burnCaptions ? "bg-clip-caption" : "bg-clip-caption/40")}
           style={{ left: s.outStart * pps + 0.5, width: Math.max(2, (s.outEnd - s.outStart) * pps - 1), height: TRACK.captions - 8 }}
         >
           <span className="block truncate leading-[22px]">{s.caption.text}</span>
@@ -342,7 +342,7 @@ function TextTrack({ edl, pps }: { edl: Edl; pps: number }) {
             useStore.getState().seek(t.start);
             useStore.getState().setNav("text");
           }}
-          className="absolute top-1 overflow-hidden rounded-[4px] bg-clip-text px-1.5 text-left text-2xs text-white hover:brightness-125"
+          className="absolute top-1 overflow-hidden rounded-md bg-clip-text px-1.5 text-left text-2xs text-white hover:brightness-125"
           style={{ left: t.start * pps + 0.5, width: Math.max(2, t.duration * pps - 1), height: TRACK.text - 8 }}
         >
           <span className="block truncate leading-[18px]">T · {t.text}</span>
@@ -476,7 +476,7 @@ export function Timeline() {
   return (
     <section className="relative flex shrink-0 flex-col border-t border-line bg-panel" style={{ height }} aria-label="Timeline">
       <div onPointerDown={startResize} className="absolute -top-1 left-0 right-0 z-40 h-2 cursor-ns-resize" title="Drag to resize" />
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-2">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
         <div className="flex items-center gap-0.5">
           <IconButton label="Undo (⌘Z)" onClick={undo} disabled={!canUndo}><Undo2 size={15} /></IconButton>
           <IconButton label="Redo (⇧⌘Z)" onClick={redo} disabled={!canRedo}><Redo2 size={15} /></IconButton>

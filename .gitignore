@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Streamlit
+.streamlit/*
+!.streamlit/config.toml
+user_settings.json
+
+# App data
+outputs/*
+!outputs/.gitkeep
+sample_videos/*
+!sample_videos/.gitkeep
+
+# OS
+.DS_Store
+
+# editor assets
+media/*
+projects/*
+static/proxy/*
+
+# FrameFlow
+data/
+.env
+frontend/node_modules/
+frontend/dist/
+
+node_modules/

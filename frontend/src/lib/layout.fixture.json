@@ -1,0 +1,66 @@
+{
+ "clips": [
+  {
+   "id": "a",
+   "mediaId": "m1",
+   "srcStart": 0,
+   "srcEnd": 3,
+   "sceneBreak": true
+  },
+  {
+   "id": "b",
+   "mediaId": "m1",
+   "srcStart": 3,
+   "srcEnd": 4.5,
+   "sceneBreak": false
+  },
+  {
+   "id": "c",
+   "mediaId": "m2",
+   "srcStart": 1,
+   "srcEnd": 2,
+   "sceneBreak": true
+  },
+  {
+   "id": "d",
+   "mediaId": "m2",
+   "srcStart": 5,
+   "srcEnd": 9,
+   "sceneBreak": true
+  }
+ ],
+ "transition": {
+  "type": "fade",
+  "duration": 0.8
+ },
+ "expected": {
+  "clips": [
+   {
+    "index": 0,
+    "group": 0,
+    "outStart": 0.0,
+    "outEnd": 3.0
+   },
+   {
+    "index": 1,
+    "group": 0,
+    "outStart": 3.0,
+    "outEnd": 4.5
+   },
+   {
+    "index": 2,
+    "group": 1,
+    "outStart": 4.05,
+    "outEnd": 5.05
+   },
+   {
+    "index": 3,
+    "group": 2,
+    "outStart": 4.6,
+    "outEnd": 8.6
+   }
+  ],
+  "duration": 8.6,
+  "transition": 0.45
+ }
+}

@@ -1,0 +1,12 @@
+# Legacy Streamlit app + shared FFmpeg engine
+streamlit>=1.37,<2.0
+Pillow>=10.0
+numpy>=1.24
+faster-whisper>=1.0            # local speech-to-text for captions
+
+# FrameFlow backend
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+scenedetect>=0.6.4             # scene detection (PySceneDetect)
+opencv-python-headless>=4.9,<5 # motion / sharpness / face analysis

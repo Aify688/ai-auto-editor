@@ -4,10 +4,12 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isActive, startJob } from "../../hooks/useJobs";
+import { ACCEPT, uploadFiles } from "../../hooks/useUpload";
 import { fmtTime, renderKey } from "../../lib/format";
 import { layout } from "../../lib/layout";
 import { useStore } from "../../store/project";
-import { Empty, IconButton, Segmented, cx } from "../ui/controls";
+import { JobProgress } from "../ai-editor/AiEditPanel";
+import { Button, Empty, IconButton, Segmented, cx } from "../ui/controls";
 import { DraftPlayer, RenderedPlayer, SourcePlayer, type Clock } from "./players";
 
 function useFit(ref: React.RefObject<HTMLDivElement>, ratio: number) {
@@ -26,11 +28,36 @@ function useFit(ref: React.RefObject<HTMLDivElement>, ratio: number) {
   return box;
 }
 
+function UploadHero() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const pick = (files: FileList | null) => files && files.length && uploadFiles(Array.from(files));
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files); }}
+      className={cx(
+        "flex w-full max-w-[560px] flex-col items-center gap-3 rounded-2xl border-[1.5px] border-dashed bg-panel px-8 py-14 text-center transition-colors",
+        over ? "border-primary bg-primary-muted" : "border-line",
+      )}
+    >
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-raise text-primary">
+        <UploadCloud size={26} />
+      </div>
+      <div className="text-lg font-semibold text-fg">Drop your videos here</div>
+      <div className="text-sm text-fg-muted">MP4, MOV, WebM and MP3. We cut it for you.</div>
+      <input ref={inputRef} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
+      <Button variant="primary" size="lg" className="mt-2 px-6" onClick={() => inputRef.current?.click()}>Add videos</Button>
+    </div>
+  );
+}
+
 function Chip({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "primary" | "warn" }) {
   return (
     <span
       className={cx(
-        "rounded px-1.5 py-0.5 text-2xs font-medium tabular-nums",
+        "rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums",
         tone === "muted" && "bg-panel2 text-fg-muted",
         tone === "primary" && "bg-primary-muted text-primary",
         tone === "warn" && "bg-warn/15 text-warn",
@@ -124,6 +151,7 @@ export function PreviewPanel() {
 
   const rendering = isActive(renderJob);
   const generating = isActive(genJob);
+  const noMedia = mediaList.length === 0;
 
   let body: React.ReactNode;
   if (editMode) {
@@ -162,7 +190,7 @@ export function PreviewPanel() {
 
   return (
     <div ref={shellRef} className={cx("flex min-w-0 flex-1 flex-col bg-app", full && "bg-black")}>
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 px-4">
         <div className="w-44">
           <Segmented
             label="Preview source"
@@ -192,16 +220,27 @@ export function PreviewPanel() {
       </div>
 
       <div ref={stageRef} className="relative flex min-h-0 flex-1 items-center justify-center p-4">
+        {noMedia && !generating ? (
+          <UploadHero />
+        ) : (
         <div
-          className="overflow-hidden rounded-sm bg-black shadow-[0_0_0_1px_#2A2F38]"
+          className="relative overflow-hidden rounded-xl bg-black shadow-[0_0_0_1px_#2A2F38,0_20px_60px_rgba(0,0,0,0.45)]"
           style={{ width: box.w, height: box.h, containerType: "size" }}
           onClick={() => canPlay && useStore.getState().setPlaying(!playing)}
         >
           {box.w > 0 && body}
+          {generating && genJob && (
+            <div className="absolute inset-0 flex items-center justify-center bg-app/85 p-4 animate-[fadein_160ms_ease-out]" onClick={(e) => e.stopPropagation()}>
+              <div className="w-[min(320px,100%)]">
+                <JobProgress job={genJob} />
+              </div>
+            </div>
+          )}
         </div>
+        )}
       </div>
 
-      <div className="shrink-0 border-t border-line px-3 pb-2 pt-1.5">
+      <div className="shrink-0 border-t border-line px-4 pb-3 pt-2">
         <input
           type="range"
           aria-label="Seek"
@@ -227,9 +266,9 @@ export function PreviewPanel() {
               aria-label={playing ? "Pause" : "Play"}
               disabled={!canPlay}
               onClick={() => useStore.getState().setPlaying(!playing)}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-fg text-app transition-transform hover:scale-105 disabled:opacity-35"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-fg text-app transition-transform hover:scale-105 disabled:opacity-35"
             >
-              {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" className="ml-0.5" />}
+              {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
             </button>
             <IconButton label={editMode ? "Next clip" : "Next file"} onClick={() => step(1)} disabled={editMode ? !hasEdit : !selected}>
               <SkipForward size={15} />

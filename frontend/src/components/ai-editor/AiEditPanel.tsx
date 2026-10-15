@@ -236,7 +236,7 @@ function Advanced() {
   );
 }
 
-function JobProgress({ job }: { job: Job }) {
+export function JobProgress({ job }: { job: Job }) {
   const idx = job.stages.findIndex((s) => s.key === job.stage);
   return (
     <div className="rounded-md border border-line bg-panel2 p-3">

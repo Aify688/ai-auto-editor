@@ -3,6 +3,11 @@
 Local, CapCut-style desktop editor that cuts a video for you. React + TypeScript + Tailwind UI,
 FastAPI backend, FFmpeg rendering, SQLite persistence. No paid services or API keys.
 
+> **One app, one URL: http://localhost:8000.** `./start.sh` is the only thing you need to run. It serves the API, media
+> and the React UI from a single process (no second server, no Node dev server). The original Streamlit editor
+> (`streamlit run app.py`, port 8501) is kept in the repo as a legacy tool and is no longer part of the normal workflow;
+> bring its saved projects into the app with `python3 scripts/import_legacy_projects.py` (copies, never deletes).
+
 ## Quick start
 
 ```bash

@@ -19,7 +19,7 @@ function Section({ title, children, right }: { title: string; children: ReactNod
   return (
     <section className="border-t border-line px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-fg-muted">{title}</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">{title}</h3>
         {right}
       </div>
       {children}
@@ -174,7 +174,7 @@ function Advanced() {
   return (
     <section className="border-t border-line">
       <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open}>
-        <span className="text-xs font-medium uppercase tracking-wide text-fg-muted">Advanced settings</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">Advanced settings</span>
         <ChevronDown size={14} className={cx("text-fg-muted transition-transform", open && "rotate-180")} />
       </button>
       {open && (

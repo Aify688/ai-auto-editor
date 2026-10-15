@@ -17,14 +17,14 @@ function TitleRow({ t, max }: { t: Title; max: number }) {
   const set = (patch: Partial<Title>, coalesce?: string) =>
     editEdl((e) => ({ ...e, titles: e.titles.map((x) => (x.id === t.id ? { ...x, ...patch } : x)) }), coalesce);
   return (
-    <div className="space-y-1.5 rounded-md border border-line bg-panel2 p-2">
+    <div className="space-y-1.5 rounded-xl border border-line bg-panel2 p-2.5">
       <div className="flex gap-1">
         <input
           value={t.text}
           aria-label="Title text"
           maxLength={80}
           onChange={(e) => set({ text: e.target.value }, `title-text-${t.id}`)}
-          className="h-7 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-fg outline-none focus:border-primary"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-panel px-2 text-xs text-fg outline-none focus:border-primary"
         />
         <button aria-label="Delete title" onClick={() => editEdl((e) => ({ ...e, titles: e.titles.filter((x) => x.id !== t.id) }))} className="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-panel hover:text-danger">
           <Trash2 size={13} />
@@ -71,7 +71,7 @@ export function TextPanel() {
           <Empty icon={<Type size={18} />} title="No timeline yet" text="Generate an edit first, then add titles at the playhead." />
         ) : (
           <>
-            <div className="space-y-2 rounded-md bg-panel2 p-2">
+            <div className="space-y-2 rounded-xl border border-line bg-panel2 p-2.5">
               <input
                 value={text}
                 maxLength={80}
@@ -79,7 +79,7 @@ export function TextPanel() {
                 aria-label="New title text"
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && add()}
-                className="h-8 w-full rounded border border-line bg-panel px-2 text-sm text-fg outline-none placeholder:text-fg-faint focus:border-primary"
+                className="h-9 w-full rounded-lg border border-line bg-panel px-2 text-sm text-fg outline-none placeholder:text-fg-faint focus:border-primary"
               />
               <Segmented label="Position" value={position} options={POSITIONS} onChange={setPosition} />
               <Button variant="primary" size="sm" className="w-full" icon={<Plus size={13} />} disabled={!text.trim()} onClick={add}>

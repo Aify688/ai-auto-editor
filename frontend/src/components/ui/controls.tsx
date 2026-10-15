@@ -153,7 +153,7 @@ export function Select<T extends string | number>({
           const hit = options.find((o) => String(o.value) === e.target.value);
           if (hit) onChange(hit.value);
         }}
-        className="h-7 w-full appearance-none rounded border border-line bg-panel2 pl-2 pr-7 text-xs text-fg outline-none transition-colors hover:border-[#4A5160] focus:border-primary disabled:opacity-45"
+        className="h-8 w-full appearance-none rounded-lg border border-line bg-panel2 pl-2 pr-7 text-xs text-fg outline-none transition-colors hover:border-[#4A5160] focus:border-primary disabled:opacity-45"
       >
         {options.map((o) => (
           <option key={String(o.value)} value={String(o.value)}>
@@ -230,9 +230,9 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         style={{ width }}
-        className="max-h-[90vh] max-w-full overflow-auto rounded-lg border border-line bg-panel shadow-2xl"
+        className="max-h-[90vh] max-w-full overflow-auto rounded-2xl border border-line bg-panel shadow-2xl"
       >
-        <div className="flex h-11 items-center justify-between border-b border-line px-4">
+        <div className="flex h-12 items-center justify-between border-b border-line px-5">
           <h2 className="text-base font-semibold">{title}</h2>
           {dismissable && (
             <IconButton label="Close" onClick={onClose}>

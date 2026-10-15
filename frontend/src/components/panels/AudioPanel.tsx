@@ -47,7 +47,7 @@ export function AudioPanel() {
       <input ref={input} type="file" accept={ACCEPT} multiple hidden onChange={(e) => { e.target.files && uploadFiles(Array.from(e.target.files)); e.target.value = ""; }} />
       <audio ref={audio} onEnded={() => setPlayingId(null)} />
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-fg-muted">Background music</h3>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">Background music</h3>
         {tracks.length === 0 ? (
           <Empty icon={<Music size={18} />} title="No music files" text="Upload an MP3 or WAV to use as background music." />
         ) : (
@@ -102,7 +102,7 @@ export function AudioPanel() {
           </div>
         )}
 
-        <h3 className="mb-1 mt-5 text-xs font-medium uppercase tracking-wide text-fg-muted">Levels</h3>
+        <h3 className="mb-1 mt-5 text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">Levels</h3>
         <Field label="Loudness normalization">
           <Toggle label="Loudness normalization" checked={audioCfg ? audioCfg.normalize : st.normalizeAudio}
             onChange={(v) => updateDoc((d) => ({ ...d, settings: { ...d.settings, normalizeAudio: v }, edl: d.edl && { ...d.edl, audio: { ...d.edl.audio, normalize: v } } }))} />

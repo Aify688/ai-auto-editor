@@ -49,9 +49,9 @@ export function TemplatesPanel() {
             <button
               key={t.name}
               onClick={() => apply(t)}
-              className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors ${active ? "border-primary bg-primary-muted" : "border-line bg-panel2 hover:border-[#4A5160]"}`}
+              className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${active ? "border-primary bg-primary-muted" : "border-line bg-panel2 hover:border-[#4A5160]"}`}
             >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-panel text-fg-muted"><Icon size={17} /></div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-app text-fg-muted"><Icon size={17} /></div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-fg">{t.name}</div>
                 <div className="truncate text-2xs text-fg-muted">

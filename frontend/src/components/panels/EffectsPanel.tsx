@@ -21,7 +21,7 @@ export function EffectsPanel() {
     <div className="flex h-full flex-col">
       <PanelHeader title="Effects" subtitle="Color grade, transitions and framing." />
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-fg-muted">Color grade</h3>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">Color grade</h3>
         <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Color grade">
           {LOOKS.map((l) => (
             <button
@@ -29,7 +29,7 @@ export function EffectsPanel() {
               role="radio"
               aria-checked={look === l.value}
               onClick={() => setLook(l.value)}
-              className={cx("overflow-hidden rounded border text-left transition-colors", look === l.value ? "border-primary" : "border-line hover:border-[#4A5160]")}
+              className={cx("overflow-hidden rounded-lg border text-left transition-colors", look === l.value ? "border-primary" : "border-line hover:border-[#4A5160]")}
             >
               <div className="aspect-video bg-panel2">
                 {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" style={{ filter: l.css }} /> : <div className="h-full w-full bg-gradient-to-br from-[#4a5a78] to-[#2b2f38]" style={{ filter: l.css }} />}
@@ -40,7 +40,7 @@ export function EffectsPanel() {
         </div>
         <p className="mt-1 text-2xs text-fg-faint">Swatches approximate the FFmpeg grade applied on render.</p>
 
-        <h3 className="mb-1 mt-5 text-xs font-medium uppercase tracking-wide text-fg-muted">Transitions</h3>
+        <h3 className="mb-1 mt-5 text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">Transitions</h3>
         {!edl ? (
           <p className="text-2xs text-fg-faint">Set by the editing style; adjustable after generating.</p>
         ) : (
@@ -71,7 +71,7 @@ export function EffectsPanel() {
           </>
         )}
 
-        <h3 className="mb-1.5 mt-5 text-xs font-medium uppercase tracking-wide text-fg-muted">Framing</h3>
+        <h3 className="mb-1.5 mt-5 text-xs font-semibold uppercase tracking-[0.06em] text-fg-muted">Framing</h3>
         <Segmented
           label="Framing"
           value={(edl?.fit ?? (doc.settings.smartCrop ? "crop" : "blur")) as "crop" | "blur"}

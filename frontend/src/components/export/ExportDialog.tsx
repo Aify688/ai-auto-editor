@@ -36,7 +36,7 @@ export function ExportDialog() {
       <div className="space-y-1 px-4 py-3">
         {done ? (
           <div className="py-2 text-center">
-            <CheckCircle2 size={36} className="mx-auto text-success" />
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/15"><CheckCircle2 size={30} className="text-success" /></div>
             <div className="mt-2 text-base font-semibold text-fg">Export complete</div>
             <div className="mt-1 text-xs text-fg-muted">{job!.result!.filename}</div>
             <div className="mt-0.5 text-xs tabular-nums text-fg-faint">
@@ -46,7 +46,7 @@ export function ExportDialog() {
               <div key={w} className="mt-1 text-2xs text-warn">{w}</div>
             ))}
             <div className="mt-4 flex justify-center gap-2">
-              <a href={api.downloadUrl(job!.id)} download className="inline-flex h-8 items-center gap-1.5 rounded bg-primary px-3 text-sm font-medium text-white hover:bg-primary-hover">
+              <a href={api.downloadUrl(job!.id)} download className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-ink hover:bg-primary-hover">
                 <Download size={14} /> Download MP4
               </a>
               <Button
@@ -56,7 +56,7 @@ export function ExportDialog() {
                 Show in folder
               </Button>
             </div>
-            <video src={job!.result!.url} controls className="mx-auto mt-4 max-h-56 rounded border border-line bg-black" />
+            <video src={job!.result!.url} controls className="mx-auto mt-4 max-h-56 rounded-xl border border-line bg-black" />
             <button onClick={() => setDismissed(job!.id)} className="mt-3 text-xs text-fg-muted hover:text-fg">
               Export again with other settings
             </button>
@@ -71,7 +71,7 @@ export function ExportDialog() {
                   disabled={running}
                   aria-label="File name"
                   onChange={(e) => set({ filename: e.target.value }, "fname")}
-                  className="h-7 w-48 rounded border border-line bg-panel2 px-2 text-xs text-fg outline-none focus:border-primary"
+                  className="h-8 w-48 rounded-lg border border-line bg-app px-2 text-xs text-fg outline-none focus:border-primary"
                 />
                 <span className="text-xs text-fg-faint">.mp4</span>
               </div>
@@ -99,16 +99,16 @@ export function ExportDialog() {
             </Field>
 
             {running && job && (
-              <div className="mt-2 rounded-md bg-panel2 p-2.5">
+              <div className="mt-2 rounded-xl border border-line bg-panel2 p-3">
                 <div className="mb-1.5 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-fg"><Loader2 size={12} className="animate-spin text-primary" /> {job.message}</span>
                   <span className="tabular-nums text-fg-muted">{Math.round(job.progress * 100)}%</span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded bg-line"><div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${job.progress * 100}%` }} /></div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-line"><div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${job.progress * 100}%` }} /></div>
               </div>
             )}
             {job?.status === "failed" && job.id !== dismissed && (
-              <div className="mt-2 flex gap-2 rounded-md border border-danger/40 bg-danger/10 p-2 text-xs text-danger">
+              <div className="mt-2 flex gap-2 rounded-xl border border-danger/40 bg-danger/10 p-2 text-xs text-danger">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span className="break-words">{job.error}</span>
               </div>
             )}

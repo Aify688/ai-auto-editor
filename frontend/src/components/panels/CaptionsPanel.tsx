@@ -22,7 +22,7 @@ export function CaptionsPanel() {
           <Empty icon={<Captions size={18} />} title="No timeline yet" text="Generate an edit, then create captions from its speech." />
         ) : (
           <>
-            <div className="rounded-md bg-panel2 p-2.5">
+            <div className="rounded-xl border border-line bg-panel2 p-3">
               {running && job ? (
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-xs text-fg">
@@ -54,7 +54,7 @@ export function CaptionsPanel() {
                 </p>
               ) : (
                 spans.map((s, i) => (
-                  <div key={`${s.caption.id}-${i}`} className="group rounded border border-line bg-panel2 p-1.5">
+                  <div key={`${s.caption.id}-${i}`} className="group rounded-lg border border-line bg-panel2 p-2">
                     <div className="mb-1 flex items-center justify-between">
                       <button onClick={() => { useStore.getState().setPreviewMode("edit"); useStore.getState().seek(s.outStart); }} className="text-2xs tabular-nums text-primary hover:underline">
                         {fmtTime(s.outStart, true)} – {fmtTime(s.outEnd, true)}

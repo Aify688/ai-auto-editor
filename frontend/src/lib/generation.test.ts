@@ -19,7 +19,7 @@ describe("generationState", () => {
   });
   it("enables auto edit for media alone", () => {
     const s = generationState({ ...base, visualCount: 2, readyCount: 2 });
-    expect(s).toMatchObject({ mode: "edit", enabled: true, label: "Auto Edit Video" });
+    expect(s).toMatchObject({ mode: "edit", enabled: true, label: "Auto-edit" });
   });
   it("footage plus a description is an auto edit that follows the description", () => {
     expect(generationState({ ...base, visualCount: 1, readyCount: 1, instruction: "make it punchy" }).mode).toBe("edit");
@@ -29,6 +29,7 @@ describe("generationState", () => {
     expect(generationState({ ...base, visualCount: 1, processing: true }).enabled).toBe(false);
   });
   it("labels a repeat run", () => {
+    expect(generationState({ ...base, visualCount: 1, readyCount: 1, hasEdit: true }).label).toBe("Auto-edit");
     expect(generationState({ ...base, instruction: "x", hasEdit: true }).label).toBe("Regenerate AI Video");
   });
 });

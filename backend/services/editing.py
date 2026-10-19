@@ -11,6 +11,7 @@ Pipeline:  detect video type (action / talking_head / scenic / mixed)
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 import uuid
 from dataclasses import dataclass, field
@@ -125,6 +126,7 @@ BORING_REASON_LABELS: dict[str, str] = {
     "dark": "Black or blown-out frames",
     "pause": "Pause between speech",
     "silence": "Long silence",
+    "filler": "Filler word (um, uh)",
     "low_motion": "Very little movement",
     "silent": "No meaningful audio",
     "blurry": "Out of focus / blurry",
@@ -440,6 +442,9 @@ def candidates(spec: StyleSpec, settings, visuals: list[dict], data: dict, notes
                         kept_silent += 1          # silent but something is visibly happening: keep
                         continue
                 cuts.append((a + PAUSE_PAD, b - PAUSE_PAD, "silence" if long_run else "pause"))
+        if getattr(settings, "removeFillers", False) and settings.removeSilence:
+            for a, b in d["audio"].get("fillers", []):
+                cuts.append((a, b, "filler"))      # already trimmed around the word; no extra pad
         if getattr(settings, "boringRemoval", True):
             for a, b, reason in _dead_runs(d, norms, dur, bool(m["has_audio"]), min_run):
                 cuts.append((a + PAUSE_PAD, b - PAUSE_PAD, reason))
@@ -892,6 +897,9 @@ def build_edl(doc, visuals_rows: list[dict], data: dict, music_row: dict | None,
     chosen = select(spec, cands, target, st.highlightDetection, d, notes,
                     sensitivity=sensitivity, weights=adaptive_w)
     on_stage("decisions")
+    if getattr(st, "removeFillers", False) and spec.order == "hook":
+        # Auto-edit keeps the story in the order it was told: a hook that moves a sentence to the front breaks speech.
+        spec = dataclasses.replace(spec, order="chronological")
     arranged = arrange(spec, chosen)
     if spec.order == "hook" and len(arranged) > 1:
         notes.append("Opened with the highest-scoring moment as a hook.")

@@ -236,7 +236,7 @@ sample_videos/            optional local test clips (gitignored, folder kept)
 ## Generate video from a description (text-to-video)
 
 You don't have to upload anything. Describe the video in the AI Edit panel (up to 20,000 characters, one paragraph per
-scene) and press **Generate AI Video**. With footage in the project the same button reads **Auto Edit Video** and edits it.
+scene) and press **Generate AI Video**. With footage in the project the same button reads **Auto-edit** and edits it (cuts pauses and filler words, adds captions, adds music that ducks under speech).
 
 Generation uses a real hosted model through [Replicate](https://replicate.com). Add a token to `.env` and restart:
 

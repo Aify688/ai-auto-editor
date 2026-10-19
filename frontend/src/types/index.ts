@@ -20,6 +20,7 @@ export interface AiSettings {
   captions: boolean;
   burnCaptions: boolean;
   removeSilence: boolean;
+  removeFillers?: boolean;
   sceneDetection: boolean;
   highlightDetection: boolean;
   highlightSensitivity: number;

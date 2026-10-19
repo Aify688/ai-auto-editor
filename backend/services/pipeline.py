@@ -91,6 +91,34 @@ def _captions_for(rows: list[dict], ctx: JobContext, notes: list[str], language:
     return captions
 
 
+FILLERS = {"um", "umm", "uh", "uhh", "uhm", "er", "erm", "hmm", "hm", "mm", "mmm", "ah", "eh", "嗯", "呃", "額", "唔"}
+FILLER_PAD = 0.04          # seconds trimmed around a filler so the cut does not clip neighbouring words
+
+
+def _mark_fillers(rows: list[dict], data: dict, ctx: JobContext, language: str) -> int:
+    """Transcribe (cached, so the caption step reuses it) and add each spoken filler to the media's silences, which the
+    editor already cuts out. Returns how many were found."""
+    st = system.status()["transcription"]
+    if not st["ok"]:
+        return 0
+    found = 0
+    spoken = [m for m in rows if m["kind"] == "video" and m["has_audio"]]
+    for i, m in enumerate(spoken):
+        label = f"Listening for filler words in {m['name']}"
+        tr = analysis.transcript(m, preferences.whisper_model(), lambda f, i=i, label=label: ctx.update((i + f) / len(spoken), label),
+                                 language=language)
+        extra = []
+        for cue in tr.get("cues", []):
+            for w in cue.get("words") or []:
+                token = "".join(ch for ch in w["word"].lower() if ch.isalnum())
+                if token in FILLERS and w["end"] - w["start"] >= 0.08:
+                    extra.append([round(w["start"] + FILLER_PAD, 3), round(w["end"] - FILLER_PAD, 3)])
+        if extra:
+            data[m["id"]]["audio"]["fillers"] = extra
+            found += len(extra)
+    return found
+
+
 def _render_preview(ctx: JobContext, pid: str, edl: dict, resolution: int) -> dict:
     out = config.project_dir(pid) / "renders" / f"preview_{ctx.id}.mp4"
     res = rendering.render(edl, rendering.preview_export(resolution), out, lambda f, msg: ctx.update(f, msg))
@@ -167,6 +195,9 @@ def generate(ctx: JobContext, pid: str, params: dict) -> dict:
     if music_row is not None and doc.settings.beatSync and doc.style in ("dynamic", "energetic", "auto"):
         ctx.update(0.3, "Finding the music's beat")
         beat = beats.estimate(str(_music_path(music_row["id"])))
+    fillers = 0
+    if doc.settings.removeFillers and doc.settings.removeSilence and doc.settings.captions:
+        fillers = _mark_fillers(ready, data, ctx, doc.settings.subtitleLanguage)
     try:
         edl = editing.build_edl(doc, ready, data, music_row, beat, on_stage=ctx.stage)
     except ValueError as e:
@@ -175,6 +206,8 @@ def generate(ctx: JobContext, pid: str, params: dict) -> dict:
         engine = "PySceneDetect" if doc.settings.sceneDetection else "scene detection off"
         edl["notes"].insert(1, f"Analyzed {len(ready)} file(s): {scene_total} scene(s) ({engine}).")
 
+    if fillers:
+        edl["notes"].insert(1, f"Cut {fillers} filler word(s) (um, uh, ...).")
     if plan is not None:
         edl["plan"] = {"instruction": doc.settings.instruction, "understood": plan["understood"], "warnings": plan["warnings"]}
         if plan["understood"]:

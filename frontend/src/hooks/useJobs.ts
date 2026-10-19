@@ -14,6 +14,38 @@ const starters: Record<Kind, (pid: string, doc: ProjectDoc) => Promise<Job>> = {
 
 export const isActive = (job?: Job | null) => !!job && (job.status === "queued" || job.status === "running");
 
+let autoEditStarting = false;
+
+/** One-click footage editing: cut pauses and filler words, caption the speech, and add background music that ducks
+ *  under dialogue. Running it again rebuilds the whole edit (captions and music included), so nothing piles up, and the
+ *  result is one undo step. */
+export async function startAutoEdit(): Promise<Job | null> {
+  const { doc, jobs } = useStore.getState();
+  if (!doc || autoEditStarting || isActive(jobs.generate)) return null;   // no duplicate requests
+  autoEditStarting = true;
+  try {
+    return await runAutoEdit(doc);
+  } finally {
+    autoEditStarting = false;
+  }
+}
+
+function runAutoEdit(doc: ProjectDoc) {
+  return startJob("generate", {
+    ...doc,
+    settings: {
+      ...doc.settings,
+      captions: true,
+      burnCaptions: true,
+      sceneDetection: true,
+      highlightDetection: true,
+      removeSilence: true,
+      removeFillers: true,
+      musicSource: doc.settings.musicSource === "none" ? "auto" : doc.settings.musicSource,
+    },
+  });
+}
+
 /** Start a backend job for the current project using the current document. */
 export async function startJob(kind: Kind, docOverride?: ProjectDoc): Promise<Job | null> {
   const { project, doc, setJob, toast } = useStore.getState();

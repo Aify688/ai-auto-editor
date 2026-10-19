@@ -3,7 +3,7 @@ import {
   RectangleHorizontal, RectangleVertical, RotateCw, Share2, Smartphone, Sparkles, Square, Star, VolumeX, Wand2, X, Zap,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { cancelJob, isActive, retryJob, startJob } from "../../hooks/useJobs";
+import { cancelJob, isActive, retryJob, startAutoEdit, startJob } from "../../hooks/useJobs";
 import { restoreRemoved } from "../../lib/edits";
 import { setPrimaryMusic } from "../../lib/timelineOps";
 import { fmtDuration } from "../../lib/format";
@@ -536,10 +536,11 @@ function GenerateArea() {
             disabled={!gen.enabled}
             title={blocked ?? undefined}
             icon={<Sparkles size={16} />}
-            onClick={() => startJob("generate")}
+            onClick={() => gen.mode === "edit" ? startAutoEdit() : startJob("generate")}
           >
             {gen.label}
           </Button>
+          {gen.mode === "edit" && <div className="text-center text-2xs text-fg-faint">Automatically cut video, caption speech, and add music.</div>}
           {blocked && <div className="text-center text-2xs text-fg-faint">{blocked}</div>}
           {gen.mode === "text" && t2v && !t2v.configured && (
             <div className="flex gap-2 rounded-md border border-warn/40 bg-warn/10 p-2.5 text-2xs text-warn" role="status">

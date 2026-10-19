@@ -31,6 +31,7 @@ class AiSettings(BaseModel):
     captions: bool = False
     burnCaptions: bool = True
     removeSilence: bool = True
+    removeFillers: bool = False   # also cut spoken fillers (um, uh, 嗯 ...); needs captions/speech-to-text
     sceneDetection: bool = True
     highlightDetection: bool = True
     highlightSensitivity: float = Field(0.5, ge=0.0, le=1.0)  # 0 = only top moments, 1 = keep more

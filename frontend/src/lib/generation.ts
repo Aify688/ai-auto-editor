@@ -22,7 +22,7 @@ export function generationState(opts: {
   const { visualCount, readyCount, processing, instruction, running, hasEdit } = opts;
   const text = instruction.trim().length > 0;
   if (visualCount > 0) {
-    const label = hasEdit ? "Re-run Auto Edit" : "Auto Edit Video";
+    const label = "Auto-edit";
     if (running) return { mode: "edit", enabled: false, label, reason: null };
     if (processing) return { mode: "edit", enabled: false, label, reason: "Waiting for media processing…" };
     if (!readyCount) return { mode: "edit", enabled: false, label, reason: "No usable media. Remove the failed files or upload again." };

@@ -73,9 +73,12 @@ def lay_out(template: dict, clips: list[dict], total: float) -> tuple[dict, list
     snapped = []
     for b in bounds:
         snapped.append(min(starts, key=lambda x: abs(x - b)) if starts else 0.0)
-    for i in range(1, len(snapped)):                 # strictly increasing; collapse sections that snap together
-        if snapped[i] <= snapped[i - 1] + 1e-6:
+    last = None
+    for i in range(len(snapped)):                    # strictly increasing; collapse sections that snap together
+        if last is not None and snapped[i] <= last + 1e-6:
             snapped[i] = None
+        else:
+            last = snapped[i]
     record, titles = [], []
     keep = [(s, b) for s, b in zip(sections, snapped) if b is not None]
     for i, (s, b) in enumerate(keep):

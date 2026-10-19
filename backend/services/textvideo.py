@@ -137,7 +137,10 @@ def _http(method: str, url: str, token: str, body: dict | None = None, timeout: 
         if e.code == 402:
             raise JobFailed("The video provider reports insufficient credit. Add credit to your account and retry.")
         if e.code == 429:
-            raise JobFailed("The video provider is rate-limiting requests. Wait a minute and try again.")
+            raise JobFailed("The video provider is rate-limiting requests"
+                            + (f" ({detail})" if detail else "")
+                            + ". Replicate limits accounts with little credit (under about $5) to a very small burst: "
+                              "add credit under Billing, or wait a minute and retry.")
         raise JobFailed(f"The video provider returned an error ({e.code}): {detail or e.reason}")
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise JobFailed(f"Could not reach the video provider: {getattr(e, 'reason', e)}")

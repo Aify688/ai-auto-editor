@@ -1,11 +1,11 @@
 import {
-  Clapperboard, Loader2, Maximize, Minimize, Pause, Play, RefreshCw, SkipBack, SkipForward, UploadCloud, Volume2,
-  VolumeX,
+  Clapperboard, History, Loader2, Maximize, Minimize, Pause, Play, RefreshCw, RotateCcw, SkipBack, SkipForward,
+  Sparkles, UploadCloud, Volume2, VolumeX,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isActive, startJob } from "../../hooks/useJobs";
 import { ACCEPT, uploadFiles } from "../../hooks/useUpload";
-import { fmtTime, renderKey } from "../../lib/format";
+import { fmtAgo, fmtDuration, fmtTime, renderKey } from "../../lib/format";
 import { layout } from "../../lib/layout";
 import { useStore } from "../../store/project";
 import { JobProgress } from "../ai-editor/AiEditPanel";
@@ -32,6 +32,10 @@ function UploadHero() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const pick = (files: FileList | null) => files && files.length && uploadFiles(Array.from(files));
+  const describe = () => {
+    useStore.getState().setNav("ai");
+    window.setTimeout(() => document.getElementById("ai-instruction")?.focus(), 60);
+  };
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -45,10 +49,90 @@ function UploadHero() {
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-raise text-primary">
         <UploadCloud size={26} />
       </div>
-      <div className="text-lg font-semibold text-fg">Drop your videos here</div>
-      <div className="text-sm text-fg-muted">MP4, MOV, WebM and MP3. We cut it for you.</div>
+      <div className="text-lg font-semibold text-fg">Upload videos to edit, or describe a video to generate it with AI.</div>
+      <div className="text-sm text-fg-muted">Drop MP4, MOV, WebM or MP3 files here. Uploading is optional.</div>
       <input ref={inputRef} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <Button variant="primary" size="lg" className="mt-2 px-6" onClick={() => inputRef.current?.click()}>Add videos</Button>
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
+        <Button variant="primary" size="lg" className="px-6" onClick={() => inputRef.current?.click()}>Add videos</Button>
+        <Button size="lg" className="px-6" icon={<Sparkles size={16} />} onClick={describe}>Describe a video</Button>
+      </div>
+    </div>
+  );
+}
+
+function VersionsMenu() {
+  const render = useStore((s) => s.project?.render ?? null);
+  const history = useStore((s) => s.project?.history ?? []);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  if (!render && history.length === 0) return null;
+
+  const restore = async (id: string) => {
+    setBusy(id);
+    try {
+      await useStore.getState().restoreVersion(id);
+      setOpen(false);
+    } catch (e: any) {
+      useStore.getState().toast(e.message ?? "Couldn't restore that version.", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Past generated versions"
+        className="flex items-center gap-1 rounded bg-panel2 px-1.5 py-0.5 text-2xs font-medium text-fg-muted transition-colors hover:bg-raise hover:text-fg"
+      >
+        <History size={11} /> Versions{history.length ? ` (${history.length})` : ""}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-xl border border-line bg-panel shadow-lg">
+          <div className="max-h-72 overflow-y-auto p-1">
+            {render && (
+              <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-fg">Current</div>
+                  <div className="truncate text-2xs text-fg-faint">{fmtAgo(render.createdAt)} · {fmtDuration(render.duration)}</div>
+                </div>
+                <span className="shrink-0 rounded-full bg-primary-muted px-2 py-0.5 text-2xs font-medium text-primary">Active</span>
+              </div>
+            )}
+            {history.map((h) => (
+              <button
+                key={h.id}
+                onClick={() => restore(h.id)}
+                disabled={busy === h.id}
+                className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-panel2 disabled:opacity-60"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs text-fg">{fmtAgo(h.createdAt)}</div>
+                  <div className="truncate text-2xs text-fg-faint">{h.width}×{h.height} · {fmtDuration(h.duration)}</div>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-2xs font-medium text-fg-muted">
+                  {busy === h.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />} Restore
+                </span>
+              </button>
+            ))}
+          </div>
+          {history.length === 0 && (
+            <div className="px-3 py-2 text-2xs text-fg-faint">No earlier versions yet — regenerate to start building history.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -216,6 +300,7 @@ export function PreviewPanel() {
               {rendering ? `Rendering ${Math.round((renderJob?.progress ?? 0) * 100)}%` : "Render preview"}
             </button>
           )}
+          {editMode && <VersionsMenu />}
         </div>
       </div>
 

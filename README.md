@@ -1,4 +1,4 @@
-# FrameFlow: AI Auto Video Editor
+# QuickCut: AI Auto Video Editor
 
 Local, CapCut-style desktop editor that cuts a video for you. React + TypeScript + Tailwind UI,
 FastAPI backend, FFmpeg rendering, SQLite persistence. No paid services or API keys.
@@ -42,6 +42,44 @@ The **edit decision list** (`doc.edl`, schema in `backend/schemas.py`) is the si
 timeline shows it, the renderer consumes it, and it is saved with the project. Output positions come from one
 layout function implemented in Python (`backend/services/layout.py`) and TypeScript (`frontend/src/lib/layout.ts`),
 checked against each other by a shared fixture.
+
+## AI Auto Edit
+
+Upload media, optionally describe the video ("Create a 30-second travel vlog with upbeat music, dynamic captions and
+smooth transitions."), click **Generate AI Video**, then preview, edit and export.
+
+- **Instruction -> plan:** `backend/services/instructions.py` turns the sentence into a validated list of setting
+  changes (length, format, style, music mood, captions, transitions, template). It is rule-based and deterministic: no
+  model call, nothing is sent anywhere, and the plan is applied to the project document, so undo/redo covers it.
+- **Editing styles vs templates:** styles (Cinematic, Energetic, Minimal, Vlog, Documentary, Professional, plus Auto and
+  a few more under "More styles") set pacing, transitions, colour, music mood and caption look. Templates
+  (`services/templates.py`) are optional structure only: sections, text placeholders, suggested length/format. Use a style
+  without a template, or any template with any style.
+- **Every video is used:** each source video gets its own share of the edit before global ranking; a target length that
+  cannot hold all videos is reported with a suggested length instead of silently dropping one.
+- **Music:** three recommendations from the bundled CC BY library with a reason each (`services/music_reco.py`), with
+  preview, apply/replace, favourite and "no music"; music ducks under speech.
+- **Removed segments** the AI cut (silence, blank frames, ...) are listed with a **Restore** button.
+- **Text:** font, weight, size, colour, stroke, shadow, background, alignment, opacity, rotation, animation and timing;
+  drag/resize/rotate in the preview. Positions are fractions of the frame, so preview and export match.
+
+Limits: theme/mood understanding uses local signals (motion, cut pace, speech, your words), not a multimodal model.
+
+## Timeline editing
+
+Audio, music, text and captions are clips you can drag on the timeline.
+
+- **Move** a clip by its body; **trim** it by its edges (audio edges change the in-point/out-point, so the sound does not
+  shift). A tooltip shows the length and position while dragging, edges snap to cuts, other clips, markers and the
+  playhead, and a whole drag is one undo step. Press Esc during a drag to cancel it.
+- **Double-click** text or a caption to edit it in place. **S** splits, **Cmd/Ctrl+D** duplicates, **Delete** removes,
+  **M** adds/removes a marker, **Alt+←/→** nudges by 0.1 s (Shift: 1 s), **Cmd/Ctrl+wheel** zooms.
+- **Audio clips** (`edl.audioClips`) have start, source in-point (`trimIn`), length, volume, fades, loop and ducking.
+  Looping repeats the trimmed region. The source files are never modified; the renderer reads the range you chose.
+  Music lane clips cannot overlap each other; text can overlap (extra rows appear); captions cannot overlap.
+- **Captions** keep their transcript. Moving or resizing one marks it as set by hand (a pencil icon) and remembers the
+  speech timing, so **Reset** in the Captions panel restores it.
+- The same rules (`frontend/src/lib/timelineOps.ts`, `video_editor/engine.py`) drive the preview and the export.
 
 ## Layout
 
@@ -194,3 +232,23 @@ sample_videos/            optional local test clips (gitignored, folder kept)
   shot detection, highlight selection, or music sync.
 - Re-encoding is used throughout (for consistent concatenation), so very
   large/long uploads will take noticeably longer to process.
+
+## Generate video from a description (text-to-video)
+
+You don't have to upload anything. Describe the video in the AI Edit panel (up to 20,000 characters, one paragraph per
+scene) and press **Generate AI Video**. With footage in the project the same button reads **Auto Edit Video** and edits it.
+
+Generation uses a real hosted model through [Replicate](https://replicate.com). Add a token to `.env` and restart:
+
+```
+REPLICATE_API_TOKEN=r8_...
+FRAMEFLOW_T2V_MODEL=minimax/video-01      # any Replicate text-to-video model
+```
+
+Without a token the button still works but the job stops with a setup message; nothing is faked. Each scene is generated
+separately (fixed length per model, 6 s by default), downloaded into the project's media, and laid out on an editable
+timeline you can preview, trim and export like any other edit. The provider's limits are enforced explicitly: at most 12
+scenes and 1,800 characters per scene (override with `FRAMEFLOW_T2V_MAX_SCENES`, `FRAMEFLOW_T2V_CLIP_SECONDS`;
+`FRAMEFLOW_T2V_INPUT` maps FrameFlow's `{prompt}`, `{aspect}`, `{seconds}` to another model's input names). A description
+that cannot fit is rejected with a message, never truncated. Voiceover and subtitles are not available for generated video yet.
+Provider calls cost money on your Replicate account.

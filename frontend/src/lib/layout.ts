@@ -14,6 +14,12 @@ export interface CaptionSpan {
   caption: Caption;
   outStart: number;
   outEnd: number;
+  /** Words (with output-timeline timing) that are still inside this clip; empty without word timestamps. */
+  words: { word: string; outStart: number; outEnd: number }[];
+  /** The video clip this span sits in (output times) and the source time its start corresponds to. */
+  clipOutStart: number;
+  clipOutEnd: number;
+  srcLo: number;
 }
 
 export interface Layout {
@@ -23,6 +29,16 @@ export interface Layout {
 }
 
 const round = (v: number, n = 3) => Math.round(v * 10 ** n) / 10 ** n;
+
+/** Output length of a clip: a freeze frame lasts its hold time, otherwise the source range divided by its speed. */
+export function clipDuration(c: Pick<EdlClip, "srcStart" | "srcEnd" | "speed" | "freeze">): number {
+  return c.freeze ? c.freeze : (c.srcEnd - c.srcStart) / (c.speed || 1);
+}
+
+/** Source seconds consumed per output second (1 = normal speed). */
+export function clipRate(c: Pick<EdlClip, "srcStart" | "srcEnd" | "speed" | "freeze">): number {
+  return (c.srcEnd - c.srcStart) / clipDuration(c);
+}
 
 export function groupIndexes(clips: EdlClip[]): number[] {
   const out: number[] = [];
@@ -40,7 +56,7 @@ export function effectiveTransition(edl: Pick<Edl, "clips" | "transition">): num
   const n = groups.length ? groups[groups.length - 1] + 1 : 0;
   if (n < 2) return 0;
   const durs = new Array(n).fill(0);
-  edl.clips.forEach((c, i) => (durs[groups[i]] += c.srcEnd - c.srcStart));
+  edl.clips.forEach((c, i) => (durs[groups[i]] += clipDuration(c)));
   const fit = round(Math.min(edl.transition.duration, Math.min(...durs) / 2 - 0.05), 2);
   return fit < 0.15 ? 0 : fit;
 }
@@ -58,7 +74,7 @@ export function layout(edl: Pick<Edl, "clips" | "transition">): Layout {
       groupStart = acc - d;
       t = groupStart;
     }
-    const dur = clip.srcEnd - clip.srcStart;
+    const dur = clipDuration(clip);
     clips.push({ clip, index: i, group: g, outStart: round(t), outEnd: round(t + dur) });
     t += dur;
     acc = t;
@@ -75,10 +91,18 @@ export function captionSpans(captions: Caption[], laid: LaidClip[]): CaptionSpan
       const lo = Math.max(lc.clip.srcStart, caption.srcStart);
       const hi = Math.min(lc.clip.srcEnd, caption.srcEnd);
       if (hi - lo > 0.05) {
+        const rate = clipRate(lc.clip);
+        const at = (x: number) => round(lc.outStart + (Math.min(hi, Math.max(lo, x)) - lc.clip.srcStart) / rate);
         out.push({
           caption,
-          outStart: round(lc.outStart + (lo - lc.clip.srcStart)),
-          outEnd: round(lc.outStart + (hi - lc.clip.srcStart)),
+          outStart: round(lc.outStart + (lo - lc.clip.srcStart) / rate),
+          outEnd: round(lc.outStart + (hi - lc.clip.srcStart) / rate),
+          clipOutStart: lc.outStart,
+          clipOutEnd: lc.outEnd,
+          srcLo: lo,
+          words: (caption.words ?? [])
+            .filter((w) => w.end > lo + 0.02 && w.start < hi - 0.02)
+            .map((w) => ({ word: w.word, outStart: at(w.start), outEnd: at(w.end) })),
         });
       }
     }
@@ -96,6 +120,7 @@ export function clipAt(laid: LaidClip[], t: number): LaidClip | null {
 
 /** Crop offset (0..1, CSS object-position semantics) that centres a subject; mirrors editing.crop_offset. */
 export function cropOffset(fx: number, fy: number, srcW: number, srcH: number, aspect: string): [number, number] {
+  if (aspect === "original") return [0.5, 0.5]; // output follows the source's own aspect ratio
   const [a, b] = aspect.split(":").map(Number);
   const outAr = a / b;
   const srcAr = srcW / Math.max(1, srcH);

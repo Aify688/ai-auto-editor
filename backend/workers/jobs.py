@@ -21,9 +21,13 @@ STAGES: dict[str, list[tuple[str, str, float]]] = {
                  ("highlights", "Selecting highlights", 0.03), ("decisions", "Generating edit decisions", 0.05),
                  ("audio_captions", "Processing audio and captions", 0.15), ("render", "Rendering video", 0.40),
                  ("finalize", "Finalizing output", 0.05)],
+    "textvideo": [("plan", "Planning scenes", 0.03), ("scenes", "Generating scenes with AI", 0.72),
+                  ("assemble", "Assembling the timeline", 0.05), ("render", "Rendering video", 0.17),
+                  ("finalize", "Finalizing output", 0.03)],
     "render": [("render", "Rendering video", 0.95), ("finalize", "Finalizing output", 0.05)],
     "export": [("render", "Rendering video", 0.95), ("finalize", "Finalizing output", 0.05)],
     "transcribe": [("audio_captions", "Transcribing speech", 1.0)],
+    "matte": [("matte", "Finding the subject", 1.0)],
     "ingest": [("process", "Processing media", 1.0)],
 }
 
@@ -123,7 +127,7 @@ def submit(kind: str, project_id: str, params: dict) -> dict:
                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                (job_id, project_id, kind, "queued", None, 0.0, "Waiting to start…", db.dumps(params), now, now))
     _cancel[job_id] = threading.Event()
-    pool = _pools["ingest" if kind == "ingest" else "work"]
+    pool = _pools["ingest" if kind in ("ingest", "textvideo") else "work"]
     pool.submit(_run, job_id, kind, project_id, params)
     return get(job_id)
 

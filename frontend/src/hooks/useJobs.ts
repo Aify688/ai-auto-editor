@@ -51,17 +51,26 @@ function onFinished(job: Job) {
     return;
   }
   if (job.status !== "done" || !job.result) return;
-  if (job.kind === "generate") {
-    s.updateDoc((d) => ({ ...d, edl: job.result!.edl }));
+  if (job.kind === "generate" || job.kind === "textvideo") {
+    const applied = job.result.appliedDoc as { style: ProjectDoc["style"]; aspect: ProjectDoc["aspect"]; template: string | null; settings: ProjectDoc["settings"] } | undefined;
+    // One history entry: undo returns to the settings and timeline from before the AI's plan was applied.
+    s.updateDoc((d) => ({
+      ...d,
+      ...(applied ? { style: applied.style, aspect: applied.aspect, template: applied.template, settings: { ...applied.settings, instruction: d.settings.instruction } } : {}),
+      edl: job.result!.edl,
+    }));
     s.setRender(job.result.render);
     s.selectClip(null);
     s.setPreviewMode("edit");
     s.seek(0);
-    s.toast("AI edit ready", "success");
+    if (job.kind === "textvideo") void s.refreshMedia();     // the generated scenes are now library media
+    s.toast(job.kind === "textvideo" ? "AI video ready" : "AI edit ready", "success");
   } else if (job.kind === "render") {
     s.setRender(job.result.render);
     s.setPreviewMode("edit");
     s.toast("Preview updated", "success");
+  } else if (job.kind === "matte") {
+    s.toast("Subject found. Render a preview to see the new background.", "success");
   } else if (job.kind === "transcribe") {
     const captions = job.result.captions ?? [];
     s.updateDoc((d) => (d.edl ? { ...d, edl: { ...d.edl, captions } } : d));

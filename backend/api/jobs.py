@@ -1,11 +1,11 @@
 import platform
 import subprocess
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse, Response
 
-from ..schemas import ExportRequest, GenerateRequest
-from ..services import pipeline, projects
+from ..schemas import ExportRequest, GenerateRequest, ProjectDoc
+from ..services import analysis, pipeline, projects, rendering, textvideo
 from ..workers import jobs
 
 router = APIRouter(tags=["jobs"])
@@ -26,7 +26,36 @@ def _start(kind: str, pid: str, body) -> dict:
 
 @router.post("/api/projects/{pid}/generate", status_code=202)
 def generate(pid: str, body: GenerateRequest):
-    return _start("generate", pid, body)
+    """Footage in the project -> edit it; a description alone -> generate video from text."""
+    try:
+        projects.get(pid)
+    except projects.NotFound as e:
+        raise HTTPException(404, str(e))
+    has_footage = bool(analysis.media_rows(pid, ("video", "image")))
+    text = body.doc.settings.instruction.strip()
+    if not has_footage and not text:
+        raise HTTPException(422, "Upload a video or image, or describe the video you want to generate.")
+    kind = "textvideo" if (not has_footage and text) else "generate"
+    if jobs.active(pid, "generate" if kind == "textvideo" else "textvideo"):
+        raise HTTPException(409, "A generation job is already running for this project.")
+    return _start(kind, pid, body)
+
+
+@router.post("/api/projects/{pid}/generation/plan")
+def generation_plan(pid: str, body: GenerateRequest):
+    """What Generate would do right now, so the UI can say it before the user clicks."""
+    from ..workers.jobs import JobFailed
+    has_footage = bool(analysis.media_rows(pid, ("video", "image")))
+    text = body.doc.settings.instruction.strip()
+    mode = "edit" if has_footage else ("text" if text else "none")
+    out = {"mode": mode, "textToVideo": textvideo.status()}
+    if mode == "text":
+        try:
+            sp = textvideo.plan(text, body.doc.settings.targetDuration, body.doc.aspect)
+            out.update(sceneCount=sp["sceneCount"], seconds=sp["seconds"], notes=sp["notes"], chars=sp["chars"])
+        except JobFailed as e:
+            out["error"] = str(e)
+    return out
 
 
 @router.post("/api/projects/{pid}/render", status_code=202)
@@ -103,3 +132,24 @@ def reveal(job_id: str):
     except OSError as e:
         raise HTTPException(501, f"Opening the folder is not supported here: {e}")
     return {"ok": True, "folder": str(path.parent)}
+
+
+@router.get("/api/projects/{pid}/captions.{fmt}")
+def export_captions(pid: str, fmt: str):
+    """Export captions as SRT or VTT subtitle file."""
+    if fmt not in ("srt", "vtt"):
+        raise HTTPException(400, "Supported formats: srt, vtt")
+    try:
+        proj = projects.get(pid)
+    except projects.NotFound as e:
+        raise HTTPException(404, str(e))
+    doc = ProjectDoc.model_validate(proj["doc"])
+    if doc.edl is None or not doc.edl.captions:
+        raise HTTPException(404, "No captions available. Generate or transcribe first.")
+    body = rendering.build_subtitle_text(doc.edl.model_dump(), fmt)
+    if body is None:
+        raise HTTPException(404, "No captions fall inside the current clips.")
+    media_type = "text/vtt" if fmt == "vtt" else "application/x-subrip"
+    name = proj.get("name", "captions").replace(" ", "_")
+    return Response(content=body, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'})

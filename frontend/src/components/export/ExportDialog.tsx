@@ -45,6 +45,9 @@ export function ExportDialog() {
             {(job!.result!.warnings ?? []).map((w: string) => (
               <div key={w} className="mt-1 text-2xs text-warn">{w}</div>
             ))}
+            {job!.result!.subtitlesFile && (
+              <div className="mt-1 text-2xs text-fg-muted">Subtitles saved alongside the video as {job!.result!.subtitlesFile}</div>
+            )}
             <div className="mt-4 flex justify-center gap-2">
               <a href={api.downloadUrl(job!.id)} download className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-ink hover:bg-primary-hover">
                 <Download size={14} /> Download MP4
@@ -76,9 +79,10 @@ export function ExportDialog() {
                 <span className="text-xs text-fg-faint">.mp4</span>
               </div>
             </Field>
-            <Field label="Resolution" hint={`${w} × ${h} (${aspect})`}>
-              <div className="w-36">
-                <Segmented label="Resolution" value={ex.resolution} onChange={(v) => set({ resolution: v })} options={[{ value: 720, label: "720p" }, { value: 1080, label: "1080p" }]} />
+            <Field label="Resolution" hint={aspect === "original" ? "Matches the source clip's own aspect ratio" : `${w} × ${h} (${aspect})`}>
+              <div className="w-48">
+                <Segmented label="Resolution" value={ex.resolution} onChange={(v) => set({ resolution: v })}
+                  options={[{ value: 720, label: "720p" }, { value: 1080, label: "1080p" }, { value: 2160, label: "4K" }]} />
               </div>
             </Field>
             <Field label="Format">
@@ -86,7 +90,11 @@ export function ExportDialog() {
             </Field>
             <Field label="Frame rate">
               <Select label="Frame rate" className="w-36" value={ex.fps} onChange={(v) => set({ fps: v })}
-                options={[24, 25, 30, 60].map((f) => ({ value: f as ExportSettings["fps"], label: `${f} fps` }))} />
+                options={[24, 30, 60].map((f) => ({ value: f as ExportSettings["fps"], label: `${f} fps` }))} />
+            </Field>
+            <Field label="Subtitles" hint={!doc.edl?.captions.length ? "No captions on the timeline" : undefined}>
+              <Segmented label="Subtitles" value={ex.subtitleHandling} onChange={(v) => set({ subtitleHandling: v })}
+                options={[{ value: "burn", label: "Burn in" }, { value: "srt", label: "SRT file" }, { value: "none", label: "None" }]} />
             </Field>
             <Field label="Quality" hint={`${QUALITY[ex.quality][ex.resolution] * (ex.fps > 30 ? 1.5 : 1) / 1000} Mbps video`}>
               <div className="w-48">

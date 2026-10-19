@@ -17,7 +17,8 @@ import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ffmpeg_ops, registry
+from . import audiofx, effects, ffmpeg_ops, keyframes, registry
+from .transitions import TRANSITION_TYPES
 
 ASPECTS = {"16:9": (16, 9), "9:16": (9, 16), "1:1": (1, 1), "4:5": (4, 5)}
 FITS = ("crop", "blur", "pad")
@@ -99,10 +100,47 @@ def validate_plan(plan: dict, clips: list | None = None) -> Validation:
         if b > dur + 0.05:
             v.warnings.append(f"segments[{i}] end {b:.2f}s clamped to clip length {dur:.2f}s.")
         b = min(b, dur)
-        if b - a < MIN_SEGMENT:
+        if b - a < (0.04 if s.get("freeze") else MIN_SEGMENT):
             v.errors.append(f"segments[{i}] is shorter than {MIN_SEGMENT}s ({b - a:.2f}s).")
             continue
         seg = {"clip": ci, "start": round(a, 3), "end": round(b, 3), **({"break": True} if s.get("break") else {})}
+        if isinstance(s.get("bg"), dict) and s["bg"].get("matte"):
+            seg["bg"] = s["bg"]            # AI background removal: matte video + replacement (see engine)
+        try:
+            rate = float(s.get("rate", 1.0))
+            hold = float(s["freeze"]) if s.get("freeze") else None
+        except (TypeError, ValueError):
+            v.errors.append(f"segments[{i}].rate/freeze must be numbers.")
+            continue
+        if hold is not None:
+            if not 0.1 <= hold <= 30:
+                v.errors.append(f"segments[{i}].freeze must be 0.1-30 seconds.")
+                continue
+            seg["freeze"] = round(hold, 3)
+            seg["rate"] = round((b - a) / hold, 4)
+        elif abs(rate - 1.0) > 1e-6:
+            if not 0.25 <= rate <= 4:
+                v.errors.append(f"segments[{i}].rate must be between 0.25 and 4.")
+                continue
+            seg["rate"] = round(rate, 4)
+        try:
+            vol = float(s.get("volume", 1.0))
+        except (TypeError, ValueError):
+            vol = 1.0
+        if abs(vol - 1.0) > 1e-6:
+            seg["volume"] = round(min(2.0, max(0.0, vol)), 3)
+        if audiofx.valid(s.get("audio_effect")):
+            seg["audio_effect"] = s["audio_effect"]
+        fx, flt = effects.normalize(s.get("effects"), s.get("filter"))
+        if fx:
+            seg["effects"] = fx
+        if flt:
+            seg["filter"] = flt
+        if s.get("transition_type") in TRANSITION_TYPES:
+            seg["transition_type"] = s["transition_type"]
+        kfs = keyframes.normalize(s.get("keyframes"))
+        if keyframes.is_animated(kfs):
+            seg["keyframes"] = kfs
         focus = s.get("focus")
         if focus is not None:
             try:
@@ -208,7 +246,7 @@ def _scene_durations(segs: list[dict], speed: float) -> list[float]:
     groups: list[float] = []
     last = None
     for s in segs:
-        d = (s["end"] - s["start"]) / speed
+        d = (s["end"] - s["start"]) / (speed * s.get("rate", 1.0))
         if last == s["clip"] and groups and not s.get("break"):
             groups[-1] += d
         else:
@@ -219,7 +257,7 @@ def _scene_durations(segs: list[dict], speed: float) -> list[float]:
 
 def _program_duration(segs, ids, norm) -> float:
     speed = next((e["settings"]["factor"] for e in norm if e["id"] == "time.speed"), 1.0)
-    total = sum((s["end"] - s["start"]) / speed for s in segs)
+    total = sum((s["end"] - s["start"]) / (speed * s.get("rate", 1.0)) for s in segs)
     if "transition.crossfade" in ids:
         t = next(e for e in norm if e["id"] == "transition.crossfade")["settings"]["duration"]
         total -= t * max(0, len(_scene_durations(segs, speed)) - 1)

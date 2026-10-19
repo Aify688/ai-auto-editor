@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import { isActive, startJob } from "../../hooks/useJobs";
+import { generationState } from "../../lib/generation";
 import { useStore } from "../../store/project";
 import { cx } from "../ui/controls";
 
@@ -15,6 +16,7 @@ export function WorkflowSteps() {
   const setPreviewMode = useStore((s) => s.setPreviewMode);
   const setExportOpen = useStore((s) => s.setExportOpen);
 
+  const instruction = useStore((s) => s.doc?.settings.instruction ?? "");
   const hasMedia = media.some((m) => m.kind !== "audio" && m.status === "ready");
   const generating = isActive(job);
   const current = exporting ? 4 : generating ? 2 : hasEdit ? 3 : hasMedia ? 1 : 0;
@@ -27,7 +29,7 @@ export function WorkflowSteps() {
       group?.querySelector<HTMLElement>("[aria-checked=true]")?.focus();
     },
     () => {
-      if (hasMedia && !generating) startJob("generate");
+      if (canGenerate) startJob("generate");
     },
     () => {
       if (hasEdit) setPreviewMode("edit");
@@ -36,7 +38,9 @@ export function WorkflowSteps() {
       if (hasEdit) setExportOpen(true);
     },
   ];
-  const enabled = [true, hasMedia, hasMedia && !generating, hasEdit, hasEdit];
+  const canGenerate = generationState({ visualCount: media.filter((m) => m.kind !== "audio").length, readyCount: media.filter((m) => m.kind !== "audio" && m.status === "ready").length,
+    processing: media.some((m) => m.status === "processing"), instruction, running: generating, hasEdit }).enabled;
+  const enabled = [true, hasMedia, canGenerate, hasEdit, hasEdit];
 
   return (
     <nav aria-label="Workflow" className="flex items-center">

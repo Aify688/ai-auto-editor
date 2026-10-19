@@ -46,8 +46,9 @@ export function stableStringify(v: unknown): string {
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export const aspectDims = (aspect: string, shortEdge: number): [number, number] => {
-  const [a, b] = aspect.split(":").map(Number);
   const even = (x: number) => Math.round(x / 2) * 2;
+  if (aspect === "original") return [shortEdge, shortEdge]; // real dims follow the source clip; shown as "original" in the UI
+  const [a, b] = aspect.split(":").map(Number);
   return a >= b ? [even((shortEdge * a) / b), shortEdge] : [shortEdge, even((shortEdge * b) / a)];
 };
 

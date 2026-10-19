@@ -50,6 +50,19 @@ def _cached(m: dict, name: str, build: Callable[[], dict]) -> dict:
     return data
 
 
+def cached_only(m: dict, name: str) -> dict:
+    """A cached analysis result, or AnalysisError when it has not been computed yet (never starts work)."""
+    f = _cache_file(m, name)
+    if f.exists():
+        try:
+            data = json.loads(f.read_text())
+            if data.get("_v") == ANALYSIS_VERSION:
+                return data
+        except ValueError:
+            pass
+    raise AnalysisError(f"{name} has not been analysed yet")
+
+
 def run_task(task: str, params: dict, progress: Progress = lambda f: None) -> dict:
     """Run backend.tasks in a child process (cancellable), streaming its PROGRESS lines."""
     with tempfile.TemporaryDirectory(prefix="ff_task_") as tmp:
@@ -99,12 +112,15 @@ def audio_features(m: dict) -> dict:
     return _cached(m, "audio", build)
 
 
-def transcript(m: dict, model: str, progress: Progress = lambda f: None) -> dict:
+def transcript(m: dict, model: str, progress: Progress = lambda f: None, language: str = "auto") -> dict:
+    """Cached per (media, model, language): re-generating captions never re-runs speech recognition."""
     if not m["has_audio"]:
         return {"cues": [], "language": None, "model": model}
     src = media_svc.render_path(m["id"])
-    return _cached(m, f"transcript_{model}", lambda: run_task("transcribe", {"path": str(src), "model": model},
-                                                              progress))
+    lang = (language or "auto").lower()
+    name = f"transcript_{model}" if lang == "auto" else f"transcript_{model}_{lang}"
+    return _cached(m, name, lambda: run_task("transcribe", {"path": str(src), "model": model, "language": lang},
+                                             progress))
 
 
 def media_rows(pid: str, kinds: tuple[str, ...]) -> list[dict]:

@@ -95,3 +95,11 @@ textarea {
     transform: translateY(8px);
   }
 }
+
+/* transition previews in the Effects library */
+@keyframes tr-fade { 0%, 15% { opacity: 1; } 85%, 100% { opacity: 0; } }
+@keyframes tr-dip { 0%, 10% { opacity: 1; filter: brightness(1); } 50% { opacity: 0.4; filter: brightness(0); } 90%, 100% { opacity: 0; } }
+@keyframes tr-wipe { 0%, 10% { clip-path: inset(0 0 0 0); } 90%, 100% { clip-path: inset(0 0 0 100%); } }
+@keyframes tr-slide { 0%, 10% { transform: translateX(0); } 90%, 100% { transform: translateX(-100%); } }
+@keyframes tr-shape { 0%, 10% { clip-path: circle(100% at 50% 50%); } 90%, 100% { clip-path: circle(0% at 50% 50%); } }
+@media (prefers-reduced-motion: reduce) { [style*="tr-"] { animation: none !important; } }

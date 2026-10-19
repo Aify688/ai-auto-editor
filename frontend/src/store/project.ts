@@ -57,6 +57,9 @@ interface State {
 
   nav: NavKey;
   selectedClipId: string | null;
+  selectedAudioId: string | null;
+  selectedTextId: string | null;
+  selectedCaptionId: string | null;
   selectedMediaId: string | null;
   previewMode: PreviewMode;
   time: number;
@@ -64,6 +67,8 @@ interface State {
   seekNonce: number;
   toasts: Toast[];
   projectsOpen: boolean;
+  settingsOpen: boolean;
+  setSettingsOpen(open: boolean): void;
   exportOpen: boolean;
 
   openProject(id: string): Promise<void>;
@@ -72,6 +77,7 @@ interface State {
   updateDoc(recipe: (d: ProjectDoc) => ProjectDoc, opts?: { coalesce?: string; history?: boolean }): void;
   replaceEdlFromServer(doc: ProjectDoc): void;
   setRender(render: RenderInfo | null): void;
+  restoreVersion(versionId: string): Promise<void>;
   undo(): void;
   redo(): void;
   markSaved(state: SaveState, error?: string | null): void;
@@ -84,6 +90,9 @@ interface State {
 
   setNav(n: NavKey): void;
   selectClip(id: string | null): void;
+  selectAudio(id: string | null): void;
+  selectText(id: string | null): void;
+  selectCaption(id: string | null): void;
   selectMedia(id: string | null): void;
   setPreviewMode(m: PreviewMode): void;
   setTime(t: number): void;
@@ -112,6 +121,9 @@ export const useStore = create<State>((set, get) => ({
   system: null,
   nav: "media",
   selectedClipId: null,
+  selectedAudioId: null,
+  selectedTextId: null,
+  selectedCaptionId: null,
   selectedMediaId: null,
   previewMode: "media",
   time: 0,
@@ -119,6 +131,7 @@ export const useStore = create<State>((set, get) => ({
   seekNonce: 0,
   toasts: [],
   projectsOpen: false,
+  settingsOpen: false,
   exportOpen: false,
 
   async openProject(id) {
@@ -139,6 +152,9 @@ export const useStore = create<State>((set, get) => ({
       uploads: [],
       jobs: latest,
       selectedClipId: null,
+      selectedAudioId: null,
+      selectedTextId: null,
+      selectedCaptionId: null,
       selectedMediaId: media.find((m) => m.kind !== "audio")?.id ?? null,
       previewMode: doc.edl?.clips.length ? "edit" : "media",
       time: 0,
@@ -183,8 +199,27 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setRender(render) {
+    // Mirrors backend/services/projects.py:set_render — the version that was current moves into
+    // history instead of being discarded, so a regenerate never destroys the previous result.
+    const RENDER_HISTORY_LIMIT = 8;
     const p = get().project;
-    if (p) set({ project: { ...p, render } });
+    if (!p) return;
+    let history = p.history;
+    if (p.render && p.render.id && p.render.id !== render?.id) {
+      history = [p.render, ...history].slice(0, RENDER_HISTORY_LIMIT);
+    }
+    set({ project: { ...p, render, history } });
+  },
+
+  async restoreVersion(versionId) {
+    const p = get().project;
+    if (!p) return;
+    const updated = await api.restoreVersion(p.id, versionId);
+    set({ project: { ...p, render: updated.render, history: updated.history } });
+    // The restored preview's own EDL becomes the live timeline too, so Export and manual
+    // editing act on the version the user just restored, not whatever was there before.
+    if (updated.render) get().updateDoc((d) => ({ ...d, edl: updated.render!.edl }), { history: true });
+    get().toast("Restored that version as the current edit.", "success");
   },
 
   undo() {
@@ -217,7 +252,9 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setJob(job) {
-    set({ jobs: { ...get().jobs, [job.kind]: job } });
+    // Text-to-video is the same user-facing action as Generate: one slot, one progress UI.
+    const slot = job.kind === "textvideo" ? "generate" : job.kind;
+    set({ jobs: { ...get().jobs, [slot]: job } });
   },
 
   setSystem(system) {
@@ -227,8 +264,18 @@ export const useStore = create<State>((set, get) => ({
   setNav(nav) {
     set({ nav });
   },
+  // One timeline item is selected at a time, whatever its kind.
   selectClip(selectedClipId) {
-    set({ selectedClipId });
+    set(selectedClipId ? { selectedClipId, selectedAudioId: null, selectedTextId: null, selectedCaptionId: null } : { selectedClipId });
+  },
+  selectAudio(selectedAudioId) {
+    set(selectedAudioId ? { selectedAudioId, selectedClipId: null, selectedTextId: null, selectedCaptionId: null } : { selectedAudioId });
+  },
+  selectText(selectedTextId) {
+    set(selectedTextId ? { selectedTextId, selectedClipId: null, selectedAudioId: null, selectedCaptionId: null } : { selectedTextId });
+  },
+  selectCaption(selectedCaptionId) {
+    set(selectedCaptionId ? { selectedCaptionId, selectedClipId: null, selectedAudioId: null, selectedTextId: null } : { selectedCaptionId });
   },
   selectMedia(selectedMediaId) {
     set({ selectedMediaId, previewMode: selectedMediaId ? "media" : get().previewMode, playing: false });
@@ -252,6 +299,9 @@ export const useStore = create<State>((set, get) => ({
   },
   dismissToast(id) {
     set({ toasts: get().toasts.filter((t) => t.id !== id) });
+  },
+  setSettingsOpen(settingsOpen) {
+    set({ settingsOpen });
   },
   setProjectsOpen(projectsOpen) {
     set({ projectsOpen });

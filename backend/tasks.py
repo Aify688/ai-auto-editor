@@ -118,7 +118,9 @@ def transcribe(args: dict) -> dict:
     from faster_whisper import WhisperModel
 
     model = WhisperModel(args.get("model", "base"), device="cpu", compute_type="int8")
-    segments, info = model.transcribe(args["path"], vad_filter=True, word_timestamps=True)
+    lang = args.get("language")
+    segments, info = model.transcribe(args["path"], vad_filter=True, word_timestamps=True,
+                                      language=lang if lang and lang != "auto" else None)
     duration = float(getattr(info, "duration", 0) or 0)
     max_chars, max_len = int(args.get("max_chars", 42)), float(args.get("max_seconds", 3.5))
     cues: list[dict] = []
@@ -135,20 +137,26 @@ def transcribe(args: dict) -> dict:
             text = "".join(x.word for x in cur + [w]).strip()
             too_long = cur and (len(text) > max_chars or w.end - cur[0].start > max_len)
             if too_long:
+                cue_words = [{"word": x.word.strip(), "start": round(float(x.start), 3),
+                              "end": round(float(x.end), 3)} for x in cur if x.word.strip()]
                 cues.append({"start": float(cur[0].start), "end": float(cur[-1].end),
-                             "text": "".join(x.word for x in cur).strip()})
+                             "text": "".join(x.word for x in cur).strip(), "words": cue_words})
                 cur = []
             cur.append(w)
             if w.word.strip()[-1:] in ".?!" and w.end - cur[0].start > 0.8:
+                cue_words = [{"word": x.word.strip(), "start": round(float(x.start), 3),
+                              "end": round(float(x.end), 3)} for x in cur if x.word.strip()]
                 cues.append({"start": float(cur[0].start), "end": float(cur[-1].end),
-                             "text": "".join(x.word for x in cur).strip()})
+                             "text": "".join(x.word for x in cur).strip(), "words": cue_words})
                 cur = []
         if cur:
+            cue_words = [{"word": x.word.strip(), "start": round(float(x.start), 3),
+                          "end": round(float(x.end), 3)} for x in cur if x.word.strip()]
             cues.append({"start": float(cur[0].start), "end": float(cur[-1].end),
-                         "text": "".join(x.word for x in cur).strip()})
+                         "text": "".join(x.word for x in cur).strip(), "words": cue_words})
     _progress(1.0)
     return {"language": getattr(info, "language", None), "duration": duration,
-            "model": args.get("model", "base"), "cues": [c for c in cues if c["end"] > c["start"] and c["text"]]}
+            "model": args.get("model", "base"), "requestedLanguage": args.get("language") or "auto", "cues": [c for c in cues if c["end"] > c["start"] and c["text"]]}
 
 
 TASKS = {"scenes": scenes, "features": features, "transcribe": transcribe}

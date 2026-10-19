@@ -2,7 +2,9 @@ import { AlertCircle, Check, Film, Image as ImageIcon, Loader2, Music, Plus, Rot
 import { useRef, useState } from "react";
 import { ACCEPT, uploadFiles } from "../../hooks/useUpload";
 import { fmtBytes, fmtDuration, uid } from "../../lib/format";
+import { layout } from "../../lib/layout";
 import { emptyEdl } from "../../lib/styles";
+import { withAudioClips } from "../../lib/timelineOps";
 import { api } from "../../services/api";
 import { useStore } from "../../store/project";
 import type { Media } from "../../types";
@@ -10,8 +12,29 @@ import { Button, Empty, PanelHeader, cx } from "../ui/controls";
 
 const KIND_ICON = { video: Film, image: ImageIcon, audio: Music };
 
+/** Put an uploaded audio file on the audio timeline at the playhead (or the first free space after it). */
+function addAudioToTimeline(m: Media) {
+  const s = useStore.getState();
+  const edl = s.doc?.edl;
+  if (!edl?.clips.length) return s.toast("Generate an edit first, then add audio to its timeline.");
+  const total = layout(edl).duration;
+  const len = Math.min(m.duration ?? 0, total);
+  const busy = edl.audioClips.map((c) => ({ start: c.start, end: c.start + (c.duration ?? Math.max(0, total - c.start)) })).sort((a, b) => a.start - b.start);
+  let at = Math.min(s.time, Math.max(0, total - 0.5));
+  for (const o of busy) if (o.start < at + Math.min(len, 1) && o.end > at) at = o.end;
+  if (at >= total - 0.3) return s.toast("There is no free space left on the audio timeline.");
+  s.updateDoc((d) => {
+    if (!d.edl) return d;
+    const clip = { id: uid("a"), mediaId: m.id, kind: "audio" as const, start: Math.round(at * 1000) / 1000, trimIn: 0, duration: Math.round(Math.min(len, total - at) * 1000) / 1000,
+      volume: 0.8, fadeIn: 0, fadeOut: 0, loop: false, duck: false };
+    return { ...d, edl: withAudioClips(d.edl, [...d.edl.audioClips, clip]) };
+  });
+  s.toast(`Added ${m.name} at ${at.toFixed(1)}s. Drag it on the Music row to place it.`);
+}
+
 export function addToTimeline(m: Media) {
   const s = useStore.getState();
+  if (m.kind === "audio" && m.status === "ready" && m.duration) return addAudioToTimeline(m);
   if (m.status !== "ready" || !m.duration || m.kind === "audio") return;
   s.updateDoc((d) => {
     const edl = d.edl ?? emptyEdl(d);
@@ -23,7 +46,8 @@ export function addToTimeline(m: Media) {
         clips: [
           ...edl.clips,
           { id: uid("c"), mediaId: m.id, srcStart: 0, srcEnd: Math.round(len * 1000) / 1000, sceneBreak: true,
-            label: m.name.replace(/\.[^.]+$/, ""), focusX: 0.5, focusY: 0.5, score: null },
+            label: m.name.replace(/\.[^.]+$/, ""), focusX: 0.5, focusY: 0.5, score: null,
+            scoreBreakdown: null, rejected: false, boring: false, boringReason: null },
         ],
       },
     };
@@ -56,6 +80,7 @@ function MediaCard({ m, index, onDragStart, onDrop }: {
             ...d.edl,
             clips: d.edl.clips.filter((c) => c.mediaId !== m.id),
             captions: d.edl.captions.filter((c) => c.mediaId !== m.id),
+            audioClips: d.edl.audioClips.filter((a) => a.mediaId !== m.id),
             music: d.edl.music?.mediaId === m.id ? null : d.edl.music,
           },
         }));
@@ -140,7 +165,7 @@ function MediaCard({ m, index, onDragStart, onDrop }: {
           <span className="absolute left-1 top-1 rounded bg-clip-audio px-1 text-2xs text-fg">Music</span>
         )}
         <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {m.kind !== "audio" && m.status === "ready" && (
+          {m.status === "ready" && (
             <button
               title="Add to timeline"
               aria-label="Add to timeline"

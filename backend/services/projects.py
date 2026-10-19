@@ -13,6 +13,12 @@ class NotFound(LookupError):
     pass
 
 
+# How many past generated versions to keep per project. Older ones (and their preview
+# files, see pipeline._render_preview) are dropped so disk use stays bounded, but a
+# regenerate never destroys the version that was current until this cap is hit.
+MAX_HISTORY = 8
+
+
 def new_id() -> str:
     return uuid.uuid4().hex[:12]
 
@@ -23,6 +29,7 @@ def _row_to_project(row: dict) -> dict:
         "name": row["name"],
         "doc": ProjectDoc.model_validate(db.loads(row["doc"], {})).model_dump(),
         "render": db.loads(row["render"]),
+        "history": db.loads(row["history"], []),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
@@ -31,8 +38,8 @@ def _row_to_project(row: dict) -> dict:
 def create(name: str) -> dict:
     pid = new_id()
     now = time.time()
-    db.execute("INSERT INTO projects (id, name, doc, render, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-               (pid, name.strip() or "Untitled project", db.dumps(ProjectDoc().model_dump()), None, now, now))
+    db.execute("INSERT INTO projects (id, name, doc, render, history, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+               (pid, name.strip() or "Untitled project", db.dumps(ProjectDoc().model_dump()), None, "[]", now, now))
     for sub in ("media", "cache", "renders", "exports"):
         (config.project_dir(pid) / sub).mkdir(parents=True, exist_ok=True)
     return get(pid)
@@ -75,9 +82,39 @@ def update(pid: str, name: str | None = None, doc: ProjectDoc | None = None) -> 
     return get(pid)
 
 
-def set_render(pid: str, render: dict | None) -> None:
-    db.execute("UPDATE projects SET render=?, updated_at=? WHERE id=?",
-               (db.dumps(render) if render else None, time.time(), pid))
+def set_render(pid: str, render: dict | None) -> list[dict]:
+    """Make `render` the current version. The previous current version (if any) is kept in
+    history rather than discarded, up to MAX_HISTORY entries. Returns the dropped entries
+    (if the cap was hit) so the caller can clean up their preview files."""
+    proj = get(pid)
+    history = list(proj["history"] or [])
+    prev = proj["render"]
+    if prev and prev.get("id") and prev["id"] != (render or {}).get("id"):
+        history.insert(0, prev)
+    dropped = history[MAX_HISTORY:]
+    history = history[:MAX_HISTORY]
+    db.execute("UPDATE projects SET render=?, history=?, updated_at=? WHERE id=?",
+               (db.dumps(render) if render else None, db.dumps(history), time.time(), pid))
+    return dropped
+
+
+def restore_render(pid: str, version_id: str) -> dict:
+    """Make a past version current again, moving the current one into history instead of
+    losing it. Raises NotFound if `version_id` isn't the current render or in history."""
+    proj = get(pid)
+    if proj["render"] and proj["render"].get("id") == version_id:
+        return proj["render"]
+    history = list(proj["history"] or [])
+    match = next((h for h in history if h.get("id") == version_id), None)
+    if match is None:
+        raise NotFound(f"Version {version_id} not found")
+    history.remove(match)
+    if proj["render"]:
+        history.insert(0, proj["render"])
+    history = history[:MAX_HISTORY]
+    db.execute("UPDATE projects SET render=?, history=?, updated_at=? WHERE id=?",
+               (db.dumps(match), db.dumps(history), time.time(), pid))
+    return match
 
 
 def delete(pid: str) -> None:

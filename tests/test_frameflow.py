@@ -167,13 +167,14 @@ class FrameFlowTest(unittest.TestCase):
         planned = lay.layout(clips, doc["edl"]["transition"])["duration"]
         self.assertAlmostEqual(job["result"]["render"]["duration"], planned, delta=0.25)
 
-        doc["export"] = {"filename": "My Export!", "resolution": 1080, "fps": 25, "quality": "draft"}
+        doc["export"] = {"filename": "My Export!", "resolution": 1080, "fps": 30, "quality": "draft"}
         r = self.client.post(f"/api/projects/{self.pid}/export", json={"doc": doc})
+        self.assertEqual(r.status_code, 202, r.text)
         job = wait(self.client, r.json()["id"])
         self.assertEqual(job["status"], "done", job["error"])
         res = job["result"]
         info = probe_video(Path(res["path"]))
-        self.assertEqual((info.width, info.height, round(info.fps)), (1920, 1080, 25))
+        self.assertEqual((info.width, info.height, round(info.fps)), (1920, 1080, 30))
         self.assertEqual(Path(res["path"]).name, "My Export.mp4")
         self.assertTrue(Path(res["path"]).with_suffix(".frameflow.json").exists())
         dl = self.client.get(f"/api/jobs/{job['id']}/download")
@@ -197,11 +198,10 @@ class FrameFlowTest(unittest.TestCase):
 
     def test_errors_are_reported(self):
         empty = self.client.post("/api/projects", json={"name": "Empty"}).json()
-        job = self.client.post(f"/api/projects/{empty['id']}/generate", json={"doc": empty["doc"]}).json()
-        job = wait(self.client, job["id"])
-        self.assertEqual(job["status"], "failed")
-        self.assertIn("Upload at least one video", job["error"])
-        doc = self.doc(settings={"musicId": "doesnotexist"})
+        r = self.client.post(f"/api/projects/{empty['id']}/generate", json={"doc": empty["doc"]})
+        self.assertEqual(r.status_code, 422)          # nothing to edit and nothing to generate from
+        self.assertIn("Upload a video or image", r.json()["detail"])
+        doc = self.doc(settings={"musicId": "doesnotexist", "musicSource": "upload"})
         job = wait(self.client, self.client.post(f"/api/projects/{self.pid}/generate", json={"doc": doc}).json()["id"])
         self.assertEqual(job["status"], "failed")
         self.assertIn("music", job["error"].lower())
@@ -234,20 +234,75 @@ class FrameFlowTest(unittest.TestCase):
         self.assertFalse(folder.exists())
         self.assertEqual(self.client.get(f"/api/projects/{pid}").status_code, 404)
 
+    def test_clip_speed_and_freeze_frame(self):
+        self.generate(self.doc(style="cinematic", aspect="16:9", settings={"musicId": None}))
+        doc = self.client.get(f"/api/projects/{self.pid}").json()["doc"]
+        doc["edl"]["transition"] = None
+        c0 = dict(doc["edl"]["clips"][0])
+        c0["srcEnd"] = round(c0["srcStart"] + 2.0, 3)
+        fast = {**c0, "id": "fast", "speed": 2.0}
+        fast["effects"] = [{"id": "glitch", "amount": 0.5}, {"id": "shake", "amount": 0.4}, {"id": "mono", "amount": 0.5}]
+        fast["volume"] = 1.5
+        fast["audioEffect"] = "voice"
+        fast["filter"] = {"id": "teal_orange", "strength": 0.6}
+        fast["keyframes"] = [{"t": 0, "scale": 1, "opacity": 0}, {"t": 0.5, "scale": 1.3, "x": 0.05, "rotation": 8, "opacity": 1, "ease": "smooth"}]
+        frozen = {**c0, "id": "frz", "srcEnd": round(c0["srcStart"] + 0.1, 3), "freeze": 1.5, "sceneBreak": True,
+                  "keyframes": [{"t": 0, "scale": 1}, {"t": 1.5, "scale": 1.4}]}
+        doc["edl"]["clips"] = [fast, frozen]
+        planned = lay.layout(doc["edl"]["clips"], None)["duration"]
+        self.assertAlmostEqual(planned, 1.0 + 1.5, places=2)
+        r = self.client.post(f"/api/projects/{self.pid}/render", json={"doc": doc})
+        job = wait(self.client, r.json()["id"])
+        self.assertEqual(job["status"], "done", job["error"])
+        self.assertAlmostEqual(job["result"]["render"]["duration"], planned, delta=0.25)
+
+    def test_text_to_speech_and_audio_effect_track(self):
+        st = self.client.get("/api/system/tts-voices").json()
+        if not st["ok"]:
+            self.skipTest("no local speech engine")
+        r = self.client.post(f"/api/projects/{self.pid}/tts", json={"text": "Testing one two three.", "voice": st["voices"][0]["name"], "rate": 1.0})
+        self.assertEqual(r.status_code, 201, r.text)
+        mid = r.json()["id"]
+        self.assertEqual(self.client.post(f"/api/projects/{self.pid}/tts", json={"text": "x", "voice": "No Such Voice", "rate": 1}).status_code, 400)
+        self.wait_media(self.pid)
+        self.generate(self.doc(style="cinematic", aspect="16:9", settings={"musicId": None}))
+        doc = self.client.get(f"/api/projects/{self.pid}").json()["doc"]
+        doc["edl"]["audioClips"] = [{"id": "vo", "mediaId": mid, "kind": "audio", "start": 0.2, "trimIn": 0, "duration": None,
+                                     "volume": 1.0, "fadeIn": 0, "fadeOut": 0, "loop": False, "duck": False, "effect": "robot"}]
+        r = self.client.post(f"/api/projects/{self.pid}/render", json={"doc": doc})
+        job = wait(self.client, r.json()["id"])
+        self.assertEqual(job["status"], "done", job["error"])
+
+    def test_per_clip_transition_type_and_effects(self):
+        self.generate(self.doc(style="cinematic", aspect="16:9", settings={"musicId": None}))
+        doc = self.client.get(f"/api/projects/{self.pid}").json()["doc"]
+        base = doc["edl"]["clips"][0]
+        a = {**base, "id": "a", "srcEnd": round(base["srcStart"] + 1.5, 3), "effects": [{"id": "blur", "amount": 0.3}, {"id": "pixelate", "amount": 0.2}]}
+        b = {**base, "id": "b", "srcStart": round(base["srcStart"] + 1.5, 3), "srcEnd": round(base["srcStart"] + 3.0, 3),
+             "sceneBreak": True, "transitionType": "circleopen", "filter": {"id": "noir", "strength": 1.0}}
+        doc["edl"]["clips"] = [a, b]
+        doc["edl"]["transition"] = {"type": "fade", "duration": 0.4}
+        planned = lay.layout([a, b], doc["edl"]["transition"])["duration"]
+        r = self.client.post(f"/api/projects/{self.pid}/render", json={"doc": doc})
+        job = wait(self.client, r.json()["id"])
+        self.assertEqual(job["status"], "done", job["error"])
+        self.assertAlmostEqual(job["result"]["render"]["duration"], planned, delta=0.3)
+
     def test_layout_parity_fixture(self):
         """Write a fixture that frontend/src/lib/layout.test.ts checks against the same expectations."""
         clips = [
             {"id": "a", "mediaId": "m1", "srcStart": 0, "srcEnd": 3, "sceneBreak": True},
             {"id": "b", "mediaId": "m1", "srcStart": 3, "srcEnd": 4.5, "sceneBreak": False},
             {"id": "c", "mediaId": "m2", "srcStart": 1, "srcEnd": 2, "sceneBreak": True},
-            {"id": "d", "mediaId": "m2", "srcStart": 5, "srcEnd": 9, "sceneBreak": True},
+            {"id": "d", "mediaId": "m2", "srcStart": 5, "srcEnd": 9, "sceneBreak": True, "speed": 2},
+            {"id": "e", "mediaId": "m2", "srcStart": 9, "srcEnd": 9.1, "sceneBreak": False, "freeze": 1.5},
         ]
         transition = {"type": "fade", "duration": 0.8}
         out = lay.layout(clips, transition)
         fixture = ROOT / "frontend" / "src" / "lib" / "layout.fixture.json"
         fixture.write_text(json.dumps({"clips": clips, "transition": transition, "expected": out}, indent=1))
-        self.assertEqual(out["transition"], 0.45)  # shrunk to fit the 1 s clip
-        self.assertEqual([c["outStart"] for c in out["clips"]], [0, 3, 4.05, 4.6])
+        self.assertEqual([c["outStart"] for c in out["clips"]][:3], [0, 3, 4.5 - out["transition"]])
+        self.assertEqual(out["clips"][4]["outEnd"] - out["clips"][4]["outStart"], 1.5)
 
 
 if __name__ == "__main__":

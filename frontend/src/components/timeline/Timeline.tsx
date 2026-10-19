@@ -1,66 +1,30 @@
 import {
-  AudioLines, Captions, Film, Maximize2, Redo2, Scissors, Sparkles, Trash2, Type, Undo2, ZoomIn, ZoomOut,
+  AudioLines, Captions, Copy, Film, Flag, Maximize2, Music, Redo2, Scissors, Sparkles, Trash2, Type, Undo2, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { deleteClip, displayBounds, moveClip, splitAt, trimClip } from "../../lib/edits";
+import { deleteClip, displayBounds, moveClip, setFreezeHold, splitAt, trimClip } from "../../lib/edits";
 import { clamp, fmtTime } from "../../lib/format";
-import { captionSpans, layout, type Layout } from "../../lib/layout";
+import { ClipMenu, type ClipMenuState } from "./ClipMenu";
+import { captionSpans, clipDuration, clipRate, layout, type Layout } from "../../lib/layout";
+import {
+  assignLanes, duplicateAudio, duplicateCaption, duplicateTitle, laneOthers, moveAudio, moveCaption, moveTitle, snapPoints, splitAudio,
+  splitCaption, splitTitle, toggleMarker, withAudioClips, type ItemRef,
+} from "../../lib/timelineOps";
 import { api } from "../../services/api";
 import { useStore } from "../../store/project";
-import type { Edl, Media } from "../../types";
+import type { Edl, Media, MusicLibraryTrack } from "../../types";
 import { IconButton, cx } from "../ui/controls";
+import { AudioLane, CaptionLane, DragFeedback, LANE, LaneEnvCtx, TextLane, type LaneEnv } from "./lanes";
+import { Waveform, usePeaks } from "./waveform";
 
 const HEADER_W = 92;
 const RULER_H = 24;
-const TRACK = { video: 58, audio: 42, captions: 30, text: 26 };
+const TRACK = { video: 58, audio: 42, music: LANE.music, captions: LANE.captions, textRow: LANE.textRow };
 const MIN_PPS = 8;
 const MAX_PPS = 320;
 const HEIGHT_KEY = "frameflow.timelineHeight";
 
-/* ------------------------------------------------------------------ shared helpers */
-const peaksCache = new Map<string, Promise<number[]>>();
-function usePeaks(url?: string) {
-  const [peaks, setPeaks] = useState<number[] | null>(null);
-  useEffect(() => {
-    if (!url) return setPeaks(null);
-    if (!peaksCache.has(url)) peaksCache.set(url, api.peaks(url).catch(() => []));
-    let alive = true;
-    peaksCache.get(url)!.then((p) => alive && setPeaks(p));
-    return () => {
-      alive = false;
-    };
-  }, [url]);
-  return peaks;
-}
-
-function Waveform({ peaks, step, from, seconds, pps, loop, color }: {
-  peaks: number[]; step: number; from: number; seconds: number; pps: number; loop?: number; color: string;
-}) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const width = Math.max(1, Math.min(16000, Math.round(seconds * pps)));
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const h = cv.clientHeight || 24;
-    const dpr = window.devicePixelRatio || 1;
-    cv.width = width * dpr;
-    cv.height = h * dpr;
-    const ctx = cv.getContext("2d")!;
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, width, h);
-    ctx.fillStyle = color;
-    for (let x = 0; x < width; x += 2) {
-      let t = from + (x / width) * seconds;
-      if (loop) t %= loop;
-      const v = peaks[Math.floor(t / step)] ?? 0;
-      const bh = Math.max(1, v * (h - 2));
-      ctx.fillRect(x, (h - bh) / 2, 1.4, bh);
-    }
-  }, [peaks, step, from, seconds, width, loop, color]);
-  return <canvas ref={ref} style={{ width, height: "100%" }} className="block" />;
-}
-
-function Filmstrip({ m, from, seconds, pps, height }: { m: Media; from: number; seconds: number; pps: number; height: number }) {
+function Filmstrip({ m, from, seconds, pps, height, rate = 1 }: { m: Media; from: number; seconds: number; pps: number; height: number; rate?: number }) {
   const sp = m.info.sprite;
   if (!sp || !m.info.spriteUrl) return null;
   const scale = height / sp.tileH;
@@ -70,7 +34,7 @@ function Filmstrip({ m, from, seconds, pps, height }: { m: Media; from: number; 
   return (
     <div className="absolute inset-0 flex overflow-hidden opacity-80">
       {Array.from({ length: n }, (_, k) => {
-        const t = from + ((k * tw + tw / 2) / pps);
+        const t = from + ((k * tw + tw / 2) / pps) * rate;
         const idx = clamp(Math.floor(t / sp.step), 0, sp.count - 1);
         return (
           <div
@@ -114,7 +78,7 @@ function TimeReadout({ duration }: { duration: number }) {
   );
 }
 
-function Ruler({ pps, width, duration }: { pps: number; width: number; duration: number }) {
+function Ruler({ pps, width, duration, markers }: { pps: number; width: number; duration: number; markers: number[] }) {
   const steps = [0.5, 1, 2, 5, 10, 15, 30, 60, 120];
   const major = steps.find((s) => s * pps >= 70) ?? 120;
   const minor = major / 5;
@@ -133,6 +97,18 @@ function Ruler({ pps, width, duration }: { pps: number; width: number; duration:
     <div className="relative" style={{ height: RULER_H, width }}>
       {ticks}
       <div className="absolute bottom-0 h-px bg-line" style={{ width: Math.max(0, duration * pps) }} />
+      {markers.map((m) => (
+        <button
+          key={m}
+          aria-label={`Marker at ${fmtTime(m, true)}`}
+          title={`Marker ${fmtTime(m, true)} (M at the playhead removes it)`}
+          onPointerDown={(e) => { e.stopPropagation(); useStore.getState().seek(m); }}
+          className="absolute top-0 z-20 -translate-x-1/2 text-warn hover:brightness-125"
+          style={{ left: m * pps }}
+        >
+          <Flag size={11} fill="currentColor" />
+        </button>
+      ))}
     </div>
   );
 }
@@ -144,6 +120,7 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
   const selectClip = useStore((s) => s.selectClip);
   const bounds = useMemo(() => displayBounds(lay), [lay]);
   const [drag, setDrag] = useState<{ from: number; x: number; to: number } | null>(null);
+  const [menu, setMenu] = useState<ClipMenuState | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
   const dropIndex = (x: number) => {
@@ -192,10 +169,18 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
     const dur = media[clip.mediaId]?.duration ?? clip.srcEnd;
     const startX = e.clientX;
     const v0 = edge === "start" ? clip.srcStart : clip.srcEnd;
+    const rate = clipRate(clip);
+    const hold0 = clip.freeze ?? 0;
     const key = `drag:trim:${clipId}:${Date.now()}`;
     selectClip(clipId);
     const move = (ev: PointerEvent) => {
-      const value = v0 + (ev.clientX - startX) / pps;
+      const dx = (ev.clientX - startX) / pps;
+      if (clip.freeze) {
+        // a freeze frame has no source range to trim: its handles stretch or shrink the hold time
+        updateDoc((d) => (d.edl ? { ...d, edl: setFreezeHold(d.edl, clipId, hold0 + (edge === "end" ? dx : -dx)) } : d), { coalesce: key });
+        return;
+      }
+      const value = v0 + dx * rate;
       updateDoc((d) => (d.edl ? { ...d, edl: trimClip(d.edl, clipId, edge, value, dur) } : d), { coalesce: key });
     };
     const up = () => {
@@ -218,7 +203,12 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
           <div
             key={lc.clip.id}
             onPointerDown={(e) => onClipDown(e, i)}
-            title={`${lc.clip.label || m?.name} · ${(lc.clip.srcEnd - lc.clip.srcStart).toFixed(2)}s (source ${lc.clip.srcStart.toFixed(2)}–${lc.clip.srcEnd.toFixed(2)}s)`}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              selectClip(lc.clip.id);
+              setMenu({ x: e.clientX, y: e.clientY, clipId: lc.clip.id });
+            }}
+            title={`${lc.clip.label || m?.name} · ${clipDuration(lc.clip).toFixed(2)}s${lc.clip.freeze ? " (freeze frame)" : lc.clip.speed && lc.clip.speed !== 1 ? ` at ${lc.clip.speed}x` : ""} (source ${lc.clip.srcStart.toFixed(2)}–${lc.clip.srcEnd.toFixed(2)}s)`}
             className={cx(
               "group absolute top-1 cursor-grab overflow-hidden rounded-md bg-clip-video active:cursor-grabbing",
               sel ? "z-10 ring-2 ring-white" : "ring-1 ring-black/40 hover:ring-white/40",
@@ -226,10 +216,15 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
             )}
             style={{ left: left + 0.5, width: width - 1, height: TRACK.video - 8 }}
           >
-            {m && <Filmstrip m={m} from={lc.clip.srcStart + (b.start - lc.outStart)} seconds={b.end - b.start} pps={pps} height={TRACK.video - 8} />}
+            {m && <Filmstrip m={m} from={lc.clip.srcStart + (b.start - lc.outStart) * clipRate(lc.clip)} seconds={b.end - b.start} rate={clipRate(lc.clip)} pps={pps} height={TRACK.video - 8} />}
             <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-1 bg-gradient-to-b from-black/70 to-transparent px-1.5 pb-2 pt-0.5">
               <span className="truncate text-2xs font-medium text-white">{lc.clip.label || m?.name}</span>
-              {width > 70 && <span className="shrink-0 text-2xs tabular-nums text-white/80">{(lc.clip.srcEnd - lc.clip.srcStart).toFixed(1)}s</span>}
+              {width > 70 && (
+                <span className="shrink-0 text-2xs tabular-nums text-white/80">
+                  {lc.clip.freeze ? "❄ " : lc.clip.speed && lc.clip.speed !== 1 ? `${lc.clip.speed}x · ` : ""}
+                  {clipDuration(lc.clip).toFixed(1)}s
+                </span>
+              )}
             </div>
             <div
               onPointerDown={(e) => onTrim(e, lc.clip.id, "start")}
@@ -244,6 +239,7 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
           </div>
         );
       })}
+      {menu && <ClipMenu menu={menu} onClose={() => setMenu(null)} />}
       {bounds.map((b, i) =>
         b.transitionBefore ? (
           <div
@@ -262,33 +258,15 @@ function VideoTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: numb
 }
 
 /* ------------------------------------------------------------------ audio, captions, text tracks */
-function AudioTrack({ edl, lay, pps, media }: { edl: Edl; lay: Layout; pps: number; media: Record<string, Media> }) {
-  const music = edl.music ? media[edl.music.mediaId] : undefined;
-  const musicPeaks = usePeaks(music?.info.peaksUrl);
+function AudioTrack({ lay, pps, media }: { lay: Layout; pps: number; media: Record<string, Media> }) {
   const bounds = useMemo(() => displayBounds(lay), [lay]);
-  if (music) {
-    return (
-      <div className="relative" style={{ height: TRACK.audio }}>
-        <div className="absolute top-1 overflow-hidden rounded-md bg-clip-audio" style={{ left: 0, width: lay.duration * pps, height: TRACK.audio - 8 }}>
-          <div className="absolute inset-0">
-            {musicPeaks && music.duration ? (
-              <Waveform peaks={musicPeaks} step={music.info.peakStep ?? 0.1} from={0} seconds={lay.duration} pps={pps} loop={music.duration} color="#9FD8B9" />
-            ) : null}
-          </div>
-          <span className="absolute left-1.5 top-0.5 rounded bg-black/40 px-1 text-2xs text-white">
-            ♪ {music.name} · {lay.duration.toFixed(1)}s{edl.music?.duck ? " · ducked" : ""}
-          </span>
-        </div>
-      </div>
-    );
-  }
   return (
     <div className="relative" style={{ height: TRACK.audio }}>
       {lay.clips.map((lc, i) => {
         const m = media[lc.clip.mediaId];
         const b = bounds[i];
         return (
-          <ClipAudio key={lc.clip.id} m={m} from={lc.clip.srcStart + (b.start - lc.outStart)} seconds={b.end - b.start} left={b.start * pps} pps={pps} />
+          <ClipAudio key={lc.clip.id} m={m} from={lc.clip.srcStart + (b.start - lc.outStart) * clipRate(lc.clip)} seconds={b.end - b.start} left={b.start * pps} pps={pps} />
         );
       })}
     </div>
@@ -308,55 +286,12 @@ function ClipAudio({ m, from, seconds, left, pps }: { m?: Media; from: number; s
   );
 }
 
-function CaptionTrack({ edl, lay, pps }: { edl: Edl; lay: Layout; pps: number }) {
-  const spans = useMemo(() => captionSpans(edl.captions, lay.clips), [edl.captions, lay]);
-  return (
-    <div className="relative" style={{ height: TRACK.captions }}>
-      {spans.map((s, i) => (
-        <button
-          key={`${s.caption.id}-${i}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => {
-            useStore.getState().seek(s.outStart);
-            useStore.getState().setNav("captions");
-          }}
-          title={s.caption.text}
-          className={cx("absolute top-1 overflow-hidden rounded-md px-1.5 text-left text-2xs text-white hover:brightness-125", edl.burnCaptions ? "bg-clip-caption" : "bg-clip-caption/40")}
-          style={{ left: s.outStart * pps + 0.5, width: Math.max(2, (s.outEnd - s.outStart) * pps - 1), height: TRACK.captions - 8 }}
-        >
-          <span className="block truncate leading-[22px]">{s.caption.text}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TextTrack({ edl, pps }: { edl: Edl; pps: number }) {
-  return (
-    <div className="relative" style={{ height: TRACK.text }}>
-      {edl.titles.map((t) => (
-        <button
-          key={t.id}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => {
-            useStore.getState().seek(t.start);
-            useStore.getState().setNav("text");
-          }}
-          className="absolute top-1 overflow-hidden rounded-md bg-clip-text px-1.5 text-left text-2xs text-white hover:brightness-125"
-          style={{ left: t.start * pps + 0.5, width: Math.max(2, t.duration * pps - 1), height: TRACK.text - 8 }}
-        >
-          <span className="block truncate leading-[18px]">T · {t.text}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ main */
 export function Timeline() {
   const edl = useStore((s) => s.doc?.edl ?? null);
   const mediaList = useStore((s) => s.media);
   const selectedId = useStore((s) => s.selectedClipId);
+  const hasSelection = useStore((s) => !!(s.selectedClipId || s.selectedAudioId || s.selectedTextId || s.selectedCaptionId));
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const { undo, redo, updateDoc, selectClip } = useStore.getState();
@@ -367,7 +302,7 @@ export function Timeline() {
   const [pps, setPps] = useState<number | null>(null);
   const [height, setHeight] = useState(() => {
     try {
-      return Number(localStorage.getItem(HEIGHT_KEY)) || 250;
+      return Number(localStorage.getItem(HEIGHT_KEY)) || 300;
     } catch {
       return 250;
     }
@@ -377,9 +312,16 @@ export function Timeline() {
   const fitPps = clamp((viewW - 40) / Math.max(5, duration), MIN_PPS, MAX_PPS);
   const zoom = pps ?? fitPps;
   const contentW = Math.max(viewW - HEADER_W, (duration + 4) * zoom);
-  const hasCaptions = !!edl && edl.captions.length > 0;
-  const hasTitles = !!edl && edl.titles.length > 0;
-  const tracksH = RULER_H + TRACK.video + TRACK.audio + TRACK.captions + (hasTitles ? TRACK.text : 0);
+  const textRows = useMemo(() => {
+    const lanes = assignLanes((edl?.titles ?? []).map((t) => ({ id: t.id, start: t.start, end: t.start + t.duration })));
+    return Math.max(1, ...[...lanes.values()].map((l) => l + 1));
+  }, [edl?.titles]);
+  const tracksH = RULER_H + TRACK.video + TRACK.audio + TRACK.music + TRACK.captions + textRows * TRACK.textRow + 4;
+  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [guide, setGuide] = useState<number | null>(null);
+  const [library, setLibrary] = useState<MusicLibraryTrack[]>([]);
+  useEffect(() => { api.musicLibrary().then(setLibrary).catch(() => undefined); }, []);
+  const mediaDur = useCallback((id: string) => media[id]?.duration ?? library.find((t) => t.id === id)?.duration ?? undefined, [media, library]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -426,18 +368,115 @@ export function Timeline() {
     window.addEventListener("pointerup", up);
   };
 
+  const env: LaneEnv | null = useMemo(
+    () => (edl && lay ? {
+      pps: zoom, total: lay.duration, media, library, mediaDur,
+      points: (exclude?: ItemRef) => snapPoints(edl, lay, useStore.getState().time, mediaDur, exclude),
+      setTip, setGuide,
+    } : null),
+    [edl, lay, zoom, media, library, mediaDur],
+  );
+
+  /** Whatever is selected: video clip, music/audio clip, text or caption. */
+  const selection = () => {
+    const st = useStore.getState();
+    if (st.selectedAudioId) return { kind: "audio" as const, id: st.selectedAudioId };
+    if (st.selectedTextId) return { kind: "text" as const, id: st.selectedTextId };
+    if (st.selectedCaptionId) return { kind: "caption" as const, id: st.selectedCaptionId };
+    if (st.selectedClipId) return { kind: "clip" as const, id: st.selectedClipId };
+    return null;
+  };
+  const setEdl = (fn: (e: Edl) => Edl) => updateDoc((d) => (d.edl ? { ...d, edl: fn(d.edl) } : d));
+  const toast = (m: string) => useStore.getState().toast(m);
+
   const split = () => {
     if (!edl || !lay) return;
-    const res = splitAt(edl, lay, useStore.getState().time, selectedId);
-    if (!res) return useStore.getState().toast("Move the playhead inside a clip (at least 0.3 s from its edges) to split.");
+    const t = useStore.getState().time;
+    const sel = selection();
+    if (sel?.kind === "audio") {
+      const c = edl.audioClips.find((x) => x.id === sel.id)!;
+      const parts = splitAudio(c, t, { srcDur: mediaDur(c.mediaId), total: lay.duration });
+      if (!parts) return toast("Move the playhead inside the audio clip (at least 0.2 s from its edges) to split it.");
+      setEdl((e) => withAudioClips(e, e.audioClips.flatMap((x) => (x.id === c.id ? parts : [x]))));
+      useStore.getState().selectAudio(parts[1].id);
+      return;
+    }
+    if (sel?.kind === "text") {
+      const tt = edl.titles.find((x) => x.id === sel.id)!;
+      const parts = splitTitle(tt, t);
+      if (!parts) return toast("Move the playhead inside the text (at least 0.2 s from its edges) to split it.");
+      setEdl((e) => ({ ...e, titles: e.titles.flatMap((x) => (x.id === tt.id ? parts : [x])) }));
+      useStore.getState().selectText(parts[1].id);
+      return;
+    }
+    if (sel?.kind === "caption") {
+      const sp = captionSpans(edl.captions, lay.clips).find((x) => x.caption.id === sel.id && t >= x.outStart && t <= x.outEnd);
+      const parts = sp && splitCaption(sp, t);
+      if (!parts) return toast("Move the playhead inside the caption to split it.");
+      setEdl((e) => ({ ...e, captions: e.captions.flatMap((x) => (x.id === sel.id ? parts : [x])) }));
+      useStore.getState().selectCaption(parts[1].id);
+      return;
+    }
+    const res = splitAt(edl, lay, t, selectedId);
+    if (!res) return toast("Move the playhead inside a clip (at least 0.3 s from its edges) to split.");
     updateDoc((d) => ({ ...d, edl: res.edl }));
     selectClip(res.newId);
   };
   const remove = () => {
-    if (!edl || !selectedId) return;
-    updateDoc((d) => (d.edl ? { ...d, edl: deleteClip(d.edl, selectedId) } : d));
-    selectClip(null);
+    if (!edl) return;
+    const sel = selection();
+    if (!sel) return;
+    const st = useStore.getState();
+    if (sel.kind === "audio") { setEdl((e) => withAudioClips(e, e.audioClips.filter((x) => x.id !== sel.id))); st.selectAudio(null); }
+    else if (sel.kind === "text") { setEdl((e) => ({ ...e, titles: e.titles.filter((x) => x.id !== sel.id) })); st.selectText(null); }
+    else if (sel.kind === "caption") { setEdl((e) => ({ ...e, captions: e.captions.filter((x) => x.id !== sel.id) })); st.selectCaption(null); }
+    else { updateDoc((d) => (d.edl ? { ...d, edl: deleteClip(d.edl, sel.id) } : d)); selectClip(null); }
   };
+  const duplicate = () => {
+    if (!edl || !lay) return;
+    const sel = selection();
+    const st = useStore.getState();
+    if (sel?.kind === "audio") {
+      const c = edl.audioClips.find((x) => x.id === sel.id)!;
+      const copy = duplicateAudio(c, { srcDur: mediaDur(c.mediaId), total: lay.duration, others: laneOthers(edl.audioClips, c.id, mediaDur, lay.duration) });
+      if (!copy) return toast("There is no free space after this audio clip for a copy.");
+      setEdl((e) => withAudioClips(e, [...e.audioClips, copy]));
+      st.selectAudio(copy.id);
+    } else if (sel?.kind === "text") {
+      const copy = duplicateTitle(edl.titles.find((x) => x.id === sel.id)!, lay.duration);
+      setEdl((e) => ({ ...e, titles: [...e.titles, copy] }));
+      st.selectText(copy.id);
+    } else if (sel?.kind === "caption") {
+      const spans = captionSpans(edl.captions, lay.clips);
+      const sp = spans.find((x) => x.caption.id === sel.id);
+      const copy = sp && duplicateCaption(sp, spans.filter((x) => x.caption.id !== sel.id).map((x) => ({ start: x.outStart, end: x.outEnd })));
+      if (!copy) return toast("There is no free space after this caption for a copy.");
+      setEdl((e) => ({ ...e, captions: [...e.captions, copy] }));
+      st.selectCaption(copy.id);
+    } else toast("Select an audio clip, text or caption to duplicate it.");
+  };
+  /** Alt+arrows: move the selected audio/text/caption by 0.1 s (1 s with Shift) without the mouse. */
+  const nudge = (dir: -1 | 1, big: boolean) => {
+    if (!edl || !lay) return;
+    const sel = selection();
+    const delta = dir * (big ? 1 : 0.1);
+    const none: number[] = [];
+    if (sel?.kind === "audio") {
+      const c = edl.audioClips.find((x) => x.id === sel.id)!;
+      const r = moveAudio(c, delta, { total: lay.duration, pps: zoom, points: none, srcDur: mediaDur(c.mediaId), others: laneOthers(edl.audioClips, c.id, mediaDur, lay.duration) });
+      setEdl((e) => withAudioClips(e, e.audioClips.map((x) => (x.id === c.id ? r.clip : x))));
+    } else if (sel?.kind === "text") {
+      const r = moveTitle(edl.titles.find((x) => x.id === sel.id)!, delta, { total: lay.duration, points: none, pps: zoom });
+      setEdl((e) => ({ ...e, titles: e.titles.map((x) => (x.id === sel.id ? r.title : x)) }));
+    } else if (sel?.kind === "caption") {
+      const spans = captionSpans(edl.captions, lay.clips);
+      const sp = spans.find((x) => x.caption.id === sel.id);
+      if (!sp) return;
+      const r = moveCaption(sp, delta, { points: none, pps: zoom, others: spans.filter((x) => x.caption.id !== sel.id).map((x) => ({ start: x.outStart, end: x.outEnd })) });
+      setEdl((e) => ({ ...e, captions: e.captions.map((x) => (x.id === sel.id ? r.caption : x)) }));
+    }
+  };
+  const marker = () => setEdl((e) => ({ ...e, markers: toggleMarker(e.markers ?? [], useStore.getState().time) }));
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -464,13 +503,17 @@ export function Timeline() {
   useEffect(() => {
     timelineActions.split = split;
     timelineActions.remove = remove;
+    timelineActions.duplicate = duplicate;
+    timelineActions.nudge = nudge;
+    timelineActions.marker = marker;
   });
 
   const headers = [
     { icon: Film, label: "Video", h: TRACK.video },
-    { icon: AudioLines, label: edl?.music ? "Music" : "Audio", h: TRACK.audio },
+    { icon: AudioLines, label: "Audio", h: TRACK.audio },
+    { icon: Music, label: "Music", h: TRACK.music },
     { icon: Captions, label: "Captions", h: TRACK.captions },
-    ...(hasTitles ? [{ icon: Type, label: "Text", h: TRACK.text }] : []),
+    { icon: Type, label: "Text", h: textRows * TRACK.textRow },
   ];
 
   return (
@@ -482,7 +525,9 @@ export function Timeline() {
           <IconButton label="Redo (⇧⌘Z)" onClick={redo} disabled={!canRedo}><Redo2 size={15} /></IconButton>
           <div className="mx-1.5 h-4 w-px bg-line" />
           <IconButton label="Split at playhead (S)" onClick={split} disabled={!edl?.clips.length}><Scissors size={15} /></IconButton>
-          <IconButton label="Delete clip (Del)" onClick={remove} disabled={!selectedId}><Trash2 size={15} /></IconButton>
+          <IconButton label="Duplicate (⌘D)" onClick={duplicate} disabled={!hasSelection}><Copy size={15} /></IconButton>
+          <IconButton label="Delete (Del)" onClick={remove} disabled={!hasSelection}><Trash2 size={15} /></IconButton>
+          <IconButton label="Add or remove a marker at the playhead (M)" onClick={marker} disabled={!edl?.clips.length}><Flag size={15} /></IconButton>
         </div>
         <TimeReadout duration={duration} />
         <div className="flex items-center gap-1">
@@ -503,7 +548,7 @@ export function Timeline() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="shrink-0 border-r border-line bg-panel" style={{ width: HEADER_W }}>
           <div style={{ height: RULER_H }} />
           {headers.map(({ icon: Icon, label, h }) => (
@@ -512,25 +557,42 @@ export function Timeline() {
             </div>
           ))}
         </div>
-        <div ref={scrollRef} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+        <div
+          ref={scrollRef}
+          className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+          style={{ height: edl?.clips.length ? tracksH : "100%" }}
+          onWheel={(e) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            e.preventDefault();
+            setPps(clamp(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), MIN_PPS, MAX_PPS));
+          }}
+        >
           {!edl || !lay || edl.clips.length === 0 ? (
             <div className="flex h-full items-center justify-center gap-2 text-xs text-fg-muted">
               <Sparkles size={14} className="text-primary" />
               Generate an AI video to build the timeline, or add clips from Media with +.
             </div>
           ) : (
-            <div className="relative" style={{ width: contentW, height: tracksH }} onPointerDown={scrub}>
-              <div className="cursor-pointer"><Ruler pps={zoom} width={contentW} duration={duration} /></div>
-              <div className="border-t border-line/50"><VideoTrack edl={edl} lay={lay} pps={zoom} media={media} /></div>
-              <div className="border-t border-line/50"><AudioTrack edl={edl} lay={lay} pps={zoom} media={media} /></div>
-              <div className="border-t border-line/50">
-                {hasCaptions ? <CaptionTrack edl={edl} lay={lay} pps={zoom} /> : (
-                  <div className="flex items-center px-2 text-2xs text-fg-faint" style={{ height: TRACK.captions }}>No captions · turn on Automatic captions or use the Captions panel</div>
-                )}
+            <LaneEnvCtx.Provider value={env!}>
+              <div className="relative" style={{ width: contentW, height: tracksH }} onPointerDown={(e) => { scrub(e); useStore.getState().selectAudio(null); useStore.getState().selectCaption(null); }}>
+                <div className="cursor-pointer"><Ruler pps={zoom} width={contentW} duration={duration} markers={edl.markers ?? []} /></div>
+                <div className="border-t border-line/50"><VideoTrack edl={edl} lay={lay} pps={zoom} media={media} /></div>
+                <div className="border-t border-line/50"><AudioTrack lay={lay} pps={zoom} media={media} /></div>
+                <div className="border-t border-line/50"><AudioLane edl={edl} lay={lay} /></div>
+                <div className="border-t border-line/50">
+                  {edl.captions.length > 0 ? <CaptionLane edl={edl} lay={lay} /> : (
+                    <div className="flex items-center px-2 text-2xs text-fg-faint" style={{ height: TRACK.captions }}>No captions · turn on Automatic captions or use the Captions panel</div>
+                  )}
+                </div>
+                <div className="border-t border-line/50">
+                  {edl.titles.length > 0 ? <TextLane edl={edl} /> : (
+                    <div className="flex items-center px-2 text-2xs text-fg-faint" style={{ height: TRACK.textRow }}>No text · add some in the Text panel</div>
+                  )}
+                </div>
+                <Playhead pps={zoom} height={tracksH} onDrag={(e) => { e.stopPropagation(); scrub(e); }} />
+                <DragFeedback tip={tip} guide={guide} pps={zoom} height={tracksH} />
               </div>
-              {hasTitles && <div className="border-t border-line/50"><TextTrack edl={edl} pps={zoom} /></div>}
-              <Playhead pps={zoom} height={tracksH} onDrag={(e) => { e.stopPropagation(); scrub(e); }} />
-            </div>
+            </LaneEnvCtx.Provider>
           )}
         </div>
       </div>
@@ -538,4 +600,10 @@ export function Timeline() {
   );
 }
 
-export const timelineActions: { split?: () => void; remove?: () => void } = {};
+export const timelineActions: {
+  split?: () => void;
+  remove?: () => void;
+  duplicate?: () => void;
+  nudge?: (dir: -1 | 1, big: boolean) => void;
+  marker?: () => void;
+} = {};

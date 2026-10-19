@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import deps
+from .transitions import TRANSITION_TYPES
 
 # status values
 AVAILABLE = "available"
@@ -117,6 +118,8 @@ class Capability:
         for extra in given:
             if extra in ("cues",) and self.id == "captions.burn":
                 out["cues"] = given[extra]
+            elif extra == "tracks" and self.id == "audio.tracks":
+                out["tracks"] = given[extra]
             else:
                 errors.append(f"{self.id}: unknown setting '{extra}'")
         return out, errors
@@ -191,16 +194,20 @@ CAPS: list[Capability] = [
     Capability("captions.burn", "Burn-in captions", "Captions",
                "Render caption cues onto the video, kept inside the platform safe zone.",
                stage="overlay", inputs=("caption cues",),
-               settings=(S("font_scale", "float", 0.045, 0.02, 0.1), S("box", "bool", True)),
+               settings=(S("font_scale", "float", 0.045, 0.02, 0.1), S("box", "bool", True),
+                         S("position", "choice", "bottom", choices=("top", "center", "bottom")),
+                         S("color", "text", "#FFFFFF"), S("highlight_color", "text", "#FFD700"),
+                         S("outline_color", "text", "#000000"),
+                         S("background", "choice", "box", choices=("box", "outline", "none")),
+                         S("karaoke", "bool", False), S("uppercase", "bool", False),
+                         S("animation", "choice", "none", choices=("none", "fade", "pop", "scale"))),
                dependencies=("ffmpeg", "pillow"), handler_ref="skills:overlay_captions",
                doc_skills=("Safe-zone-aware captions", "Captions and subtitles (burn-in)", "Titles")),
     # ---- transitions
     Capability("transition.crossfade", "Transitions between clips", "Transitions",
                "Blend between different source clips (fade, dip to black/white, wipes, slides).",
                stage="join", inputs=("2+ clips",),
-               settings=(S("type", "choice", "fade", choices=(
-                   "fade", "fadeblack", "fadewhite", "dissolve", "wipeleft", "wiperight", "slideleft",
-                   "slideright", "circleopen", "pixelize")),
+               settings=(S("type", "choice", "fade", choices=TRANSITION_TYPES),
                          S("duration", "float", 0.5, 0.1, 3.0)),
                dependencies=("ffmpeg", "filter:xfade"), handler_ref="engine:build_join",
                doc_skills=("Transitions (dissolve, dip, wipe)",)),
@@ -223,6 +230,11 @@ CAPS: list[Capability] = [
     Capability("audio.volume", "Voice gain", "Audio", "Raise or lower the original audio.", stage="master",
                settings=(S("gain_db", "float", 0.0, -30, 20),), dependencies=("ffmpeg",),
                handler_ref="skills:master_volume", doc_skills=("Level balancing",)),
+    Capability("audio.tracks", "Audio timeline", "Audio",
+               "Place music/sound clips on the timeline: start, trim, fades, looping, volume and ducking per clip.",
+               stage="master", inputs=("audio files",), settings=(),
+               dependencies=("ffmpeg", "filter:sidechaincompress"), handler_ref="skills:master_tracks",
+               doc_skills=("Music selection (mixing a supplied track)", "Level balancing and fades")),
     Capability("audio.music_bed", "Music bed with ducking", "Audio",
                "Mix your own music file under the dialogue; optionally duck it when someone speaks.",
                stage="master", inputs=("audio file",),
@@ -267,7 +279,17 @@ CAPS: list[Capability] = [
     Capability("graphics.title", "Title card text", "Graphics", "Text over the video for a time range.",
                stage="overlay", settings=(S("text", "text", None, required=True), S("start", "float", 0.0, 0, 3600),
                                           S("duration", "float", 3.0, 0.5, 60),
-                                          S("position", "choice", "center", choices=("top", "center", "bottom"))),
+                                          S("position", "choice", "center", choices=("top", "center", "bottom")),
+                                          S("x", "float", 0.5, -0.2, 1.2), S("y", "float", None, -0.2, 1.2),
+                                          S("size", "float", 0.07, 0.015, 0.5), S("rotation", "float", 0.0, -180, 180),
+                                          S("font", "text", "Arial"),
+                                          S("weight", "choice", "bold", choices=("normal", "bold")),
+                                          S("color", "text", "#FFFFFF"), S("opacity", "float", 1.0, 0, 1),
+                                          S("align", "choice", "center", choices=("left", "center", "right")),
+                                          S("strokeColor", "text", "#000000"), S("strokeWidth", "float", 0.0, 0, 0.3),
+                                          S("shadow", "bool", False), S("background", "text", "#000000"),
+                                          S("backgroundOpacity", "float", 0.65, 0, 1),
+                                          S("animation", "choice", "none", choices=("none", "fade", "pop", "scale", "slide"))),
                dependencies=("ffmpeg", "pillow"), handler_ref="skills:overlay_title",
                doc_skills=("Titles, lower thirds (static text only)",)),
     Capability("graphics.lower_third", "Lower third", "Graphics", "Name + subtitle bar, left aligned.",

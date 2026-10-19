@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     doc TEXT NOT NULL,
     render TEXT,
+    history TEXT,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
@@ -68,7 +69,15 @@ def connect() -> sqlite3.Connection:
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.execute("PRAGMA foreign_keys=ON")
             _conn.executescript(SCHEMA)
+            _migrate(_conn)
         return _conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that didn't exist in earlier versions of the schema (SQLite has no ALTER ... IF NOT EXISTS)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
+    if "history" not in cols:
+        conn.execute("ALTER TABLE projects ADD COLUMN history TEXT")
 
 
 def execute(sql: str, args: tuple = ()) -> int:

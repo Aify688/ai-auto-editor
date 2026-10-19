@@ -1,7 +1,14 @@
 // Video players for the preview panel. Edit-mode players read/write the shared store time so the
 // timeline playhead and the picture stay in sync; the source player keeps its own clock.
 import { useEffect, useMemo, useRef } from "react";
-import { captionSpans, cropOffset, type Layout } from "../../lib/layout";
+import { clipFilterCss, clipFlip, hasVignette } from "../../lib/effects";
+import { isAnimated, keyframeStyle, valuesAt } from "../../lib/keyframes";
+import { captionSpans, clipRate, cropOffset, type Layout } from "../../lib/layout";
+import { DEFAULT_CAPTION_STYLE } from "../../lib/styles";
+import { audioLength } from "../../lib/timelineOps";
+import { useLibrary } from "../../hooks/useLibrary";
+import { CaptionOverlay } from "./CaptionOverlay";
+import { TextOverlays } from "./TextOverlays";
 import { LOOKS } from "../../lib/styles";
 import { useStore } from "../../store/project";
 import type { Edl, Media } from "../../types";
@@ -76,21 +83,29 @@ export function RenderedPlayer({ url, volume }: { url: string; volume: number })
 /* ------------------------------------------------------------------ live draft of the EDL */
 export function DraftPlayer({ edl, lay, media, volume }: { edl: Edl; lay: Layout; media: Record<string, Media>; volume: number }) {
   const v = useRef<HTMLVideoElement>(null);
-  const music = useRef<HTMLAudioElement>(null);
+  const audios = useRef<Record<string, HTMLAudioElement | null>>({});
+  const library = useLibrary();
   const cur = useRef(-1);
   const switching = useRef(false);
+  const freezeClock = useRef<{ base: number; wall: number } | null>(null);
   const playing = useStore((s) => s.playing);
   const seekNonce = useStore((s) => s.seekNonce);
   const time = useStore((s) => s.time);
-  const musicMedia = edl.music ? media[edl.music.mediaId] : undefined;
+  const clipSrc = (mediaId: string) => media[mediaId]?.info.url ?? library.find((t) => t.id === mediaId)?.url;
+  const clipDur = (mediaId: string) => media[mediaId]?.duration ?? library.find((t) => t.id === mediaId)?.duration ?? undefined;
   const look = LOOKS.find((l) => l.value === edl.look)?.css ?? "none";
 
   const style = useMemo(() => {
     const lc = lay.clips[Math.max(0, cur.current)] ?? lay.clips[0];
     const m = lc && media[lc.clip.mediaId];
-    if (!lc || !m || edl.fit === "blur") return { objectFit: "contain" as const, filter: look };
+    const anim: { transform?: string; opacity?: number } = lc && isAnimated(lc.clip.keyframes) ? keyframeStyle(valuesAt(lc.clip.keyframes, time - lc.outStart)) : {};
+    const fxCss = lc ? clipFilterCss(lc.clip.filter, lc.clip.effects) : "";
+    const flip = lc ? clipFlip(lc.clip.effects) : "";
+    const filter = [look === "none" ? "" : look, fxCss].filter(Boolean).join(" ") || "none";
+    const withFlip = flip ? { ...anim, transform: `${anim.transform ?? ""} ${flip}`.trim() } : anim;
+    if (!lc || !m || edl.fit === "blur") return { objectFit: "contain" as const, filter, ...withFlip };
     const [ox, oy] = cropOffset(lc.clip.focusX, lc.clip.focusY, m.width ?? 16, m.height ?? 9, edl.aspect);
-    return { objectFit: "cover" as const, objectPosition: `${ox * 100}% ${oy * 100}%`, filter: look };
+    return { objectFit: "cover" as const, objectPosition: `${ox * 100}% ${oy * 100}%`, filter, ...withFlip };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lay, media, edl.fit, edl.aspect, look, time]);
 
@@ -100,11 +115,18 @@ export function DraftPlayer({ edl, lay, media, volume }: { edl: Edl; lay: Layout
     const m = lc && media[lc.clip.mediaId];
     if (!video || !lc || !m?.info.proxyUrl) return;
     cur.current = i;
-    const target = lc.clip.srcStart + Math.max(0, offset);
+    const frozen = !!lc.clip.freeze;
+    const rate = clipRate(lc.clip);
+    const target = lc.clip.srcStart + (frozen ? 0 : Math.max(0, offset) * rate);
+    // a freeze frame is held by a wall clock: the video sits on its first frame while the timeline time advances
+    freezeClock.current = frozen ? { base: lc.outStart + Math.max(0, offset), wall: performance.now() } : null;
     const apply = () => {
       video.currentTime = target;
+      video.volume = Math.min(1, volumeRef.current * (lc.clip.volume ?? 1));
+      video.playbackRate = frozen ? 1 : Math.min(16, Math.max(0.0625, rate));
       switching.current = false;
-      if (autoplay) video.play().catch(() => useStore.getState().setPlaying(false));
+      if (autoplay && !frozen) video.play().catch(() => useStore.getState().setPlaying(false));
+      else if (frozen) video.pause();
     };
     switching.current = true;
     if (video.dataset.src !== m.info.proxyUrl) {
@@ -114,13 +136,28 @@ export function DraftPlayer({ edl, lay, media, volume }: { edl: Edl; lay: Layout
     } else apply();
   };
 
+  /** Audio timeline in the draft preview. Uses the same placement rule as the renderer (see lib/timelineOps audioLength). */
   const syncMusic = (t: number, play: boolean) => {
-    const a = music.current;
-    if (!a || !musicMedia?.duration) return;
-    const want = t % musicMedia.duration;
-    if (Math.abs(a.currentTime - want) > 0.25) a.currentTime = want;
-    if (play && a.paused) a.play().catch(() => undefined);
-    if (!play && !a.paused) a.pause();
+    for (const c of edl.audioClips ?? []) {
+      const a = audios.current[c.id];
+      if (!a) continue;
+      const src = clipDur(c.mediaId);
+      const len = audioLength(c, src, lay.duration);
+      const into = t - c.start;
+      const live = len > 0 && into >= 0 && into < len;
+      if (!live) {
+        if (!a.paused) a.pause();
+        continue;
+      }
+      const region = src ? Math.max(0.2, src - c.trimIn) : Infinity;
+      const want = c.trimIn + (c.loop ? into % region : Math.min(into, region));
+      if (Math.abs(a.currentTime - want) > 0.25) a.currentTime = want;
+      const fadeIn = c.fadeIn > 0 ? Math.min(1, into / c.fadeIn) : 1;
+      const fadeOut = c.fadeOut > 0 ? Math.min(1, (len - into) / c.fadeOut) : 1;
+      a.volume = Math.max(0, Math.min(1, c.volume * Math.min(fadeIn, fadeOut) * volumeRef.current));
+      if (play && a.paused) a.play().catch(() => undefined);
+      if (!play && !a.paused) a.pause();
+    }
   };
 
   // seek (also runs when the edit itself changes)
@@ -143,27 +180,32 @@ export function DraftPlayer({ edl, lay, media, volume }: { edl: Edl; lay: Layout
         useStore.getState().seek(0);
         return;
       }
-      if (!switching.current) video.play().catch(() => useStore.getState().setPlaying(false));
+      if (freezeClock.current) freezeClock.current = { base: useStore.getState().time, wall: performance.now() };
+      else if (!switching.current) video.play().catch(() => useStore.getState().setPlaying(false));
     } else video.pause();
     syncMusic(useStore.getState().time, playing);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing]);
 
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
   useEffect(() => {
     if (v.current) v.current.volume = volume;
-    if (music.current) music.current.volume = Math.min(1, volume * (edl.music?.volume ?? 0.3));
-  }, [volume, edl.music?.volume]);
+    syncMusic(useStore.getState().time, useStore.getState().playing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [volume, edl.audioClips]);
 
   useRaf(playing, () => {
     const video = v.current;
     const i = cur.current;
     const lc = lay.clips[i];
     if (!video || !lc || switching.current || video.seeking) return;
-    const t = lc.outStart + (video.currentTime - lc.clip.srcStart);
+    const fz = freezeClock.current;
+    const t = fz ? fz.base + (performance.now() - fz.wall) / 1000 : lc.outStart + (video.currentTime - lc.clip.srcStart) / clipRate(lc.clip);
     const next = lay.clips[i + 1];
     if (next && t >= next.outStart) {
       load(i + 1, t - next.outStart, true);
-    } else if (!next && (t >= lc.outEnd - 0.03 || video.ended)) {
+    } else if (!next && (t >= lc.outEnd - 0.03 || (!fz && video.ended))) {
       useStore.getState().setTime(lay.duration);
       useStore.getState().setPlaying(false);
       return;
@@ -174,28 +216,22 @@ export function DraftPlayer({ edl, lay, media, volume }: { edl: Edl; lay: Layout
 
   const spans = useMemo(() => (edl.burnCaptions ? captionSpans(edl.captions, lay.clips) : []), [edl.captions, edl.burnCaptions, lay]);
   const caption = spans.find((s) => time >= s.outStart && time < s.outEnd);
-  const titles = edl.titles.filter((t) => time >= t.start && time < t.start + t.duration);
+  const capStyle = edl.captionStyle ?? DEFAULT_CAPTION_STYLE;
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
       {edl.fit === "blur" && <div className="absolute inset-0 bg-black" />}
       <video ref={v} playsInline preload="auto" muted={false} className="relative h-full w-full" style={style} />
-      {musicMedia?.info.url && <audio ref={music} src={musicMedia.info.url} preload="auto" loop />}
-      {titles.map((t) => (
-        <div
-          key={t.id}
-          className={`pointer-events-none absolute inset-x-[6%] text-center ${t.position === "top" ? "top-[12%]" : t.position === "bottom" ? "bottom-[12%]" : "top-1/2 -translate-y-1/2"}`}
-        >
-          <span className="inline-block rounded-md bg-black/65 px-3 py-1.5 text-[clamp(14px,4.5cqh,40px)] font-bold leading-tight text-white">{t.text}</span>
-        </div>
-      ))}
-      {caption && (
-        <div className={`pointer-events-none absolute inset-x-[8%] text-center ${edl.aspect === "9:16" ? "bottom-[22%]" : "bottom-[9%]"}`}>
-          <span className="inline-block rounded bg-black/65 px-2 py-1 text-[clamp(11px,3.4cqh,30px)] font-bold leading-snug text-white [text-shadow:0_1px_2px_#000]">
-            {caption.caption.text}
-          </span>
-        </div>
-      )}
+      {(edl.audioClips ?? []).map((c) => {
+        const src = clipSrc(c.mediaId);
+        return src ? <audio key={c.id} ref={(el) => { audios.current[c.id] = el; }} src={src} preload="auto" /> : null;
+      })}
+      {(() => {
+        const vig = hasVignette(lay.clips[Math.max(0, cur.current)]?.clip.effects);
+        return vig > 0 ? <div className="pointer-events-none absolute inset-0" style={{ background: `radial-gradient(ellipse at center, transparent ${70 - vig * 30}%, rgba(0,0,0,${0.35 + vig * 0.5}) 100%)` }} /> : null;
+      })()}
+      <TextOverlays titles={edl.titles} time={time} editable={!playing} />
+      {caption && <CaptionOverlay span={caption} time={time} style={capStyle} aspect={edl.aspect} />}
     </div>
   );
 }

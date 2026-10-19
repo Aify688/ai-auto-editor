@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import analysis
 from .ffmpeg_ops import ClipInfo
-from .overlay import OverlayItem, text_layer
+from .overlay import OverlayItem, caption_layer, hex_to_rgba, text_layer, text_object_layer
 
 
 # ---------------------------------------------------------------- contexts
@@ -65,13 +65,14 @@ class MasterFrag:
     voice_af: list[str] = field(default_factory=list)   # before music mix
     final_af: list[str] = field(default_factory=list)   # after music mix
     music: dict | None = None
+    tracks: list[dict] = field(default_factory=list)   # audio timeline clips (see master_tracks)
 
 
 @dataclass
 class OverlayCtx:
     size: tuple[int, int]
     duration: float
-    seg_starts: list[tuple[int, float, float, float]]  # (clip, src_start, src_end, out_start)
+    seg_starts: list[tuple]  # (clip, src_start, src_end, out_start[, rate]); rate = per-clip speed
     speed: float = 1.0
 
 
@@ -275,6 +276,25 @@ def master_volume(s: dict, m: MasterCtx) -> MasterFrag:
     return MasterFrag(voice_af=[f"volume={s['gain_db']}dB"])
 
 
+def master_tracks(s: dict, m: MasterCtx) -> MasterFrag:
+    """Audio timeline clips: each is {path, volume, duck, start, trim_in, length, fade_in, fade_out, loop, src_len}."""
+    tracks = []
+    for t in s.get("tracks") or []:
+        start = max(0.0, float(t.get("start", 0)))
+        if start >= m.duration - 0.02:
+            continue
+        length = t.get("length")
+        length = m.duration - start if length is None else min(float(length), m.duration - start)
+        if length < 0.05:
+            continue
+        tracks.append({"path": t["path"], "volume": max(0.0, min(1.0, float(t.get("volume", 0.35)))),
+                       "duck": bool(t.get("duck", True)), "start": start, "trim_in": max(0.0, float(t.get("trim_in", 0))),
+                       "length": length, "fade_in": min(float(t.get("fade_in", 0)), length),
+                       "fade_out": min(float(t.get("fade_out", 0)), length), "loop": bool(t.get("loop")),
+                       "effect": t.get("effect") or "none"})
+    return MasterFrag(tracks=tracks)
+
+
 def master_music(s: dict, m: MasterCtx) -> MasterFrag:
     return MasterFrag(music={"path": s["path"], "volume": float(s["volume"]), "duck": bool(s["duck"])})
 
@@ -283,31 +303,148 @@ def master_music(s: dict, m: MasterCtx) -> MasterFrag:
 def _remap(cue: dict, starts, speed: float) -> list[tuple[float, float]]:
     """Map a source-time cue to output-time spans (cue may straddle cuts)."""
     out = []
-    for clip, a, b, o in starts:
+    for clip, a, b, o, *rest in starts:
         if clip != cue["clip"]:
             continue
+        sp = speed * (rest[0] if rest else 1.0)
         lo, hi = max(a, cue["start"]), min(b, cue["end"])
         if hi - lo > 0.05:
-            out.append((o + (lo - a) / speed, o + (hi - a) / speed))
+            out.append((o + (lo - a) / sp, o + (hi - a) / sp))
     return out
+
+
+def _remap_parts(cue: dict, starts, speed: float) -> list[dict]:
+    """Like _remap, but also returns the source range and the mapping so words can be placed too."""
+    out = []
+    for clip, a, b, o, *rest in starts:
+        if clip != cue["clip"]:
+            continue
+        sp = speed * (rest[0] if rest else 1.0)
+        lo, hi = max(a, cue["start"]), min(b, cue["end"])
+        if hi - lo > 0.05:
+            out.append({"out_a": o + (lo - a) / sp, "out_b": o + (hi - a) / sp, "lo": lo, "hi": hi,
+                        "map": lambda x, a=a, o=o, sp=sp: o + (x - a) / sp})
+    return out
+
+
+ANIM_SECONDS = {"fade": 0.18, "pop": 0.22, "scale": 0.30}
+
+
+def _anim_params(kind: str, t: float, dur: float, a: float, b: float) -> tuple[float, float]:
+    """(scale, alpha) of a caption at output time t for a cue shown during [a, b]."""
+    if kind == "none":
+        return 1.0, 1.0
+    d_in = min(ANIM_SECONDS.get(kind, 0.2), (b - a) / 2)
+    d_out = min(0.12, (b - a) / 4) if kind in ("fade", "scale") else 0.0
+    scale, alpha = 1.0, 1.0
+    if t < a + d_in:
+        p = max(0.0, min(1.0, (t - a) / d_in))
+        if kind == "fade":
+            alpha = p
+        elif kind == "pop":                       # overshoot: 0.6 -> 1.12 -> 1.0
+            scale = 0.6 + 0.52 * min(1.0, p / 0.7) if p < 0.7 else 1.12 - 0.12 * (p - 0.7) / 0.3
+            alpha = min(1.0, p / 0.4)
+        elif kind == "scale":
+            scale = 0.88 + 0.12 * p
+            alpha = p
+    if d_out and t > b - d_out:
+        alpha = min(alpha, max(0.0, (b - t) / d_out))
+    return scale, alpha
 
 
 def overlay_captions(s: dict, o: OverlayCtx) -> list[OverlayItem]:
     w, h = o.size
     vertical = h > w
+    anchor = s.get("position", "bottom")
     margin = 0.22 if vertical else 0.09  # stay above platform UI (bottom 20-35% on shorts)
-    items = []
+    if anchor == "top":
+        margin = 0.1 if vertical else 0.06
+    color = hex_to_rgba(s.get("color", "#FFFFFF"))
+    highlight = hex_to_rgba(s.get("highlight_color", "#FFD700"))
+    outline = hex_to_rgba(s.get("outline_color", "#000000"))
+    background = s.get("background")  # "box" | "outline" | "none"; falls back to the legacy "box" bool
+    box = bool(s["box"]) if background is None else background == "box"
+    stroke = True if background is None else background != "none"
+    karaoke = bool(s.get("karaoke"))
+    anim = s.get("animation", "none")
+    upper = bool(s.get("uppercase"))
+    fmt = (lambda t: t.upper()) if upper else (lambda t: t)
+    fps = 15.0
+    items: list[OverlayItem] = []
     for cue in s["cues"]:
-        for a, b in _remap(cue, o.seg_starts, o.speed):
-            img = text_layer(o.size, cue["text"], anchor="bottom", font_scale=s["font_scale"],
-                             margin_bottom=margin, box=bool(s["box"]))
-            items.append(OverlayItem(a, b, img))
+        for part in _remap_parts(cue, o.seg_starts, o.speed):
+            a, b = part["out_a"], part["out_b"]
+            words = [wd for wd in (cue.get("words") or []) if wd["end"] > part["lo"] + 0.02 and wd["start"] < part["hi"] - 0.02]
+            if words:
+                tokens = [fmt(wd["word"]) for wd in words]
+                spans = [(part["map"](max(wd["start"], part["lo"])), part["map"](min(wd["end"], part["hi"]))) for wd in words]
+            else:
+                tokens, spans = fmt(cue["text"]).split(), []
+            if not tokens:
+                continue
+            cuts = {a, b}
+            if karaoke and spans:
+                for x, y in spans:
+                    cuts.update((min(max(x, a), b), min(max(y, a), b)))
+            d_in = min(ANIM_SECONDS.get(anim, 0.0), (b - a) / 2) if anim != "none" else 0.0
+            n_in = max(1, int(round(d_in * fps))) if d_in else 0
+            cuts.update(a + d_in * k / n_in for k in range(n_in + 1)) if n_in else None
+            if anim in ("fade", "scale"):
+                d_out = min(0.12, (b - a) / 4)
+                cuts.update(b - d_out * k / 2 for k in range(3))
+            edges = sorted(c for c in cuts if a - 1e-6 <= c <= b + 1e-6)
+            cache: dict = {}
+            for t0, t1 in zip(edges, edges[1:]):
+                if t1 - t0 < 1e-3:
+                    continue
+                mid = (t0 + t1) / 2
+                active = None
+                if karaoke and spans:
+                    for i, (x, y) in enumerate(spans):
+                        if x <= mid < y:
+                            active = i
+                            break
+                sc, al = _anim_params(anim, mid, b - a, a, b)
+                key = (active, round(sc, 2), round(al, 2))
+                if key not in cache:
+                    cache[key] = caption_layer(o.size, tokens, active, anchor=anchor, font_scale=s["font_scale"],
+                                               margin=margin, box=box, stroke=stroke, color=color, highlight=highlight,
+                                               outline=outline, scale=sc, alpha=al)
+                items.append(OverlayItem(t0, t1, cache[key]))
     return items
 
 
 def overlay_title(s: dict, o: OverlayCtx) -> list[OverlayItem]:
-    img = text_layer(o.size, s["text"], anchor=s["position"], font_scale=0.07, margin_bottom=0.12, box=True)
-    return [OverlayItem(float(s["start"]), min(o.duration, float(s["start"]) + float(s["duration"])), img)]
+    a = float(s["start"])
+    b = min(o.duration, a + float(s["duration"]))
+    if b - a < 0.05:
+        return []
+    anim = s.get("animation", "none")
+    fps = 15.0
+    d_in = min(ANIM_SECONDS.get(anim, 0.3 if anim == "slide" else 0.0), (b - a) / 2) if anim != "none" else 0.0
+    d_out = min(0.12, (b - a) / 4) if anim in ("fade", "scale", "slide") else 0.0
+    cuts = {a, b}
+    if d_in:
+        n = max(1, int(round(d_in * fps)))
+        cuts.update(a + d_in * k / n for k in range(n + 1))
+    if d_out:
+        cuts.update(b - d_out * k / 2 for k in range(3))
+    edges = sorted(c for c in cuts if a - 1e-6 <= c <= b + 1e-6)
+    items, cache = [], {}
+    for t0, t1 in zip(edges, edges[1:]):
+        if t1 - t0 < 1e-3:
+            continue
+        mid = (t0 + t1) / 2
+        kind = "fade" if anim == "slide" else anim
+        scale, alpha = _anim_params(kind, mid, b - a, a, b)
+        dy = 0.0
+        if anim == "slide" and d_in and mid < a + d_in:
+            dy = 0.06 * (1 - (mid - a) / d_in)
+        key = (round(scale, 2), round(alpha, 2), round(dy, 3))
+        if key not in cache:
+            cache[key] = text_object_layer(o.size, s, scale, alpha, dy)
+        items.append(OverlayItem(t0, t1, cache[key]))
+    return items
 
 
 def overlay_lower_third(s: dict, o: OverlayCtx) -> list[OverlayItem]:

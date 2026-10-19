@@ -26,7 +26,16 @@
    "mediaId": "m2",
    "srcStart": 5,
    "srcEnd": 9,
-   "sceneBreak": true
+   "sceneBreak": true,
+   "speed": 2
+  },
+  {
+   "id": "e",
+   "mediaId": "m2",
+   "srcStart": 9,
+   "srcEnd": 9.1,
+   "sceneBreak": false,
+   "freeze": 1.5
   }
  ],
  "transition": {
@@ -57,10 +66,16 @@
     "index": 3,
     "group": 2,
     "outStart": 4.6,
-    "outEnd": 8.6
+    "outEnd": 6.6
+   },
+   {
+    "index": 4,
+    "group": 2,
+    "outStart": 6.6,
+    "outEnd": 8.1
    }
   ],
-  "duration": 8.6,
+  "duration": 8.1,
   "transition": 0.45
  }
 }

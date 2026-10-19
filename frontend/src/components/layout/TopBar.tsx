@@ -1,4 +1,4 @@
-import { AlertCircle, Check, FolderOpen, Loader2, Redo2, Undo2, Upload } from "lucide-react";
+import { AlertCircle, Check, FolderOpen, Loader2, Redo2, Settings, Undo2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../store/project";
 import { Button, IconButton } from "../ui/controls";
@@ -115,6 +115,9 @@ export function TopBar() {
         </IconButton>
         <IconButton label="Redo (⇧⌘Z)" onClick={redo} disabled={!canRedo}>
           <Redo2 size={16} />
+        </IconButton>
+        <IconButton label="Settings" onClick={() => useStore.getState().setSettingsOpen(true)}>
+          <Settings size={16} />
         </IconButton>
         <div className="mx-2 h-5 w-px bg-line" />
         <Button

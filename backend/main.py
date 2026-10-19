@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,10 +37,14 @@ app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_meth
 
 for module in (projects, system, media_api, jobs_api):
     app.include_router(module.router)
+app.include_router(projects.router_templates)
 
 config.ensure_dirs()
 # Project media, proxies, renders and exports. StaticFiles answers HTTP Range requests, so video seeking works.
 app.mount("/files", StaticFiles(directory=str(config.DATA_DIR)), name="files")
+# The bundled, CC-BY-licensed background-music library (see backend/assets/music/CREDITS.md).
+app.mount("/music-library", StaticFiles(directory=str(config.ROOT / "backend" / "assets" / "music")),
+         name="music-library")
 
 # Serve the built frontend when it exists (single-command local run).
 if (config.FRONTEND_DIST / "index.html").exists():
@@ -48,6 +52,10 @@ if (config.FRONTEND_DIST / "index.html").exists():
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
+        # An unknown API/file path is an error, not the web page: otherwise a client that asks an older or
+        # misrouted server for JSON gets a 200 "<!doctype html>" and fails with "Unexpected token '<'".
+        if path.split("/", 1)[0] in ("api", "files", "music-library"):
+            raise HTTPException(404, f"No such endpoint: /{path}. If the app was updated, restart the server (./start.sh).")
         target = config.FRONTEND_DIST / path
         if path and target.is_file() and config.FRONTEND_DIST in target.resolve().parents:
             return FileResponse(target)

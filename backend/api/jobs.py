@@ -1,11 +1,13 @@
 import platform
 import subprocess
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field
 
 from ..schemas import ExportRequest, GenerateRequest, ProjectDoc
-from ..services import analysis, pipeline, projects, rendering, textvideo
+from ..services import analysis, imagevideo, media as media_svc, pipeline, projects, rendering, textvideo
 from ..workers import jobs
 
 router = APIRouter(tags=["jobs"])
@@ -39,6 +41,36 @@ def generate(pid: str, body: GenerateRequest):
     if jobs.active(pid, "generate" if kind == "textvideo" else "textvideo"):
         raise HTTPException(409, "A generation job is already running for this project.")
     return _start(kind, pid, body)
+
+
+class AnimateBody(BaseModel):
+    mediaId: str
+    prompt: str = Field("", max_length=1000)
+    seconds: float = Field(5.0, ge=2, le=10)
+    aspect: Literal["16:9", "9:16", "1:1", "4:5", "original"] = "16:9"
+    intensity: Literal["low", "medium", "high"] = "medium"
+
+
+@router.get("/api/system/image-to-video")
+def image_to_video_status():
+    return imagevideo.status()
+
+
+@router.post("/api/projects/{pid}/animate", status_code=202)
+def animate(pid: str, body: AnimateBody):
+    """Turn one image of the project into an animated clip with the configured image-to-video provider."""
+    try:
+        projects.get(pid)
+    except projects.NotFound as e:
+        raise HTTPException(404, str(e))
+    if not imagevideo.status()["configured"]:
+        raise HTTPException(503, imagevideo.SETUP_HINT)
+    row = media_svc.get_row(body.mediaId)
+    if row is None or row["project_id"] != pid or row["kind"] != "image":
+        raise HTTPException(422, "Choose an image from this project's media.")
+    if jobs.active(pid, "animate"):
+        raise HTTPException(409, "An animation is already being generated for this project.")
+    return jobs.submit("animate", pid, body.model_dump())
 
 
 @router.post("/api/projects/{pid}/generation/plan")

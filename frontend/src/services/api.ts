@@ -1,3 +1,4 @@
+import type { AnimateOptions, ImageToVideoStatus } from "../types/animate";
 import type { Preferences, TtsStatus } from "../types/tts";
 import type { GenerationPlan, InstructionPlan, Job, Media, MusicLibraryTrack, MusicRecommendations, Project, ProjectDoc, ProjectSummary, SystemStatus, TemplateDef } from "../types";
 
@@ -77,6 +78,8 @@ export const api = {
     request<Media[]>(`/api/projects/${pid}/media/order`, { method: "PUT", body: json({ ids }) }),
   peaks: (url: string) => request<number[]>(url),
 
+  imageToVideo: () => request<ImageToVideoStatus>("/api/system/image-to-video"),
+  animate: (pid: string, body: AnimateOptions) => request<Job>(`/api/projects/${pid}/animate`, { method: "POST", body: json(body) }),
   generate: (pid: string, doc: ProjectDoc) =>
     request<Job>(`/api/projects/${pid}/generate`, { method: "POST", body: json({ doc }) }),
   generationPlan: (pid: string, doc: ProjectDoc) =>

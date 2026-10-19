@@ -9,7 +9,7 @@ from .. import config
 from ..schemas import Edl, ProjectDoc
 from ..workers import jobs
 from ..workers.jobs import JobContext, JobFailed
-from . import analysis, beats, editing, instructions, matting, music_library, music_reco, preferences, projects, rendering, system, textvideo
+from . import analysis, beats, editing, imagevideo, instructions, matting, music_library, music_reco, preferences, projects, rendering, system, textvideo
 from . import media as media_svc
 from .media import STILL_SECONDS
 
@@ -305,6 +305,15 @@ def textvideo_job(ctx: JobContext, pid: str, params: dict) -> dict:
     _store_edl(pid, edl)
     applied = {"style": doc.style, "aspect": doc.aspect, "template": doc.template, "settings": st.model_dump()}
     return {"edl": edl, "render": render, "appliedDoc": applied}
+
+
+# ------------------------------------------------------------------ image to animation
+@jobs.handler("animate")
+def animate_job(ctx: JobContext, pid: str, params: dict) -> dict:
+    """One image -> one animated clip in the media library. The original image is left untouched."""
+    ctx.stage("animate")
+    return imagevideo.animate(pid, params["mediaId"], params.get("prompt", ""), float(params.get("seconds", 5)),
+                              params.get("aspect", "16:9"), params.get("intensity", "medium"), ctx.update, ctx.check)
 
 
 # ------------------------------------------------------------------ re-render after timeline edits

@@ -161,13 +161,15 @@ def _input(c: dict, prompt: str, aspect: str) -> dict:
     return _fill(tpl, {"{prompt}": prompt, "{aspect}": aspect, "{seconds}": c["clip_seconds"]})
 
 
-def generate_scene(prompt: str, aspect: str, check) -> str:
-    """Run one prediction to completion and return the output URL. `check()` raises on cancel."""
+def generate_scene(prompt: str, aspect: str, check, *, model: str | None = None, body: dict | None = None,
+                   setup_hint: str = SETUP_HINT) -> str:
+    """Run one prediction to completion and return the output URL. `check()` raises on cancel.
+    `model` and `body` (the provider's `input`) override the text-to-video defaults, e.g. for image-to-video."""
     c = _cfg()
     if not c["token"]:
-        raise JobFailed(SETUP_HINT)
-    pred = _http("POST", f"{c['base']}/models/{c['model']}/predictions", c["token"],
-                 {"input": _input(c, prompt, aspect)})
+        raise JobFailed(setup_hint)
+    pred = _http("POST", f"{c['base']}/models/{model or c['model']}/predictions", c["token"],
+                 {"input": body if body is not None else _input(c, prompt, aspect)})
     get_url = (pred.get("urls") or {}).get("get") or f"{c['base']}/predictions/{pred.get('id')}"
     cancel_url = (pred.get("urls") or {}).get("cancel")
     deadline = time.time() + c["timeout"]

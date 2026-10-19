@@ -1,4 +1,4 @@
-import { AudioLines, Captions, Clapperboard, LayoutTemplate, Sparkles, Type, Wand2 } from "lucide-react";
+import { AudioLines, Captions, Clapperboard, ImagePlay, LayoutTemplate, Sparkles, Type, Wand2 } from "lucide-react";
 import { useStore } from "../../store/project";
 import type { NavKey } from "../../types";
 import { cx } from "../ui/controls";
@@ -10,6 +10,7 @@ export const NAV_ITEMS: { key: NavKey; label: string; icon: typeof Clapperboard 
   { key: "text", label: "Text", icon: Type },
   { key: "captions", label: "Captions", icon: Captions },
   { key: "effects", label: "Effects", icon: Wand2 },
+  { key: "animate", label: "Animate", icon: ImagePlay },
   { key: "templates", label: "Templates", icon: LayoutTemplate },
 ];
 

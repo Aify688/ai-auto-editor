@@ -101,6 +101,9 @@ function onFinished(job: Job) {
     s.setRender(job.result.render);
     s.setPreviewMode("edit");
     s.toast("Preview updated", "success");
+  } else if (job.kind === "animate") {
+    void s.refreshMedia();                                  // the animation is now in the media library
+    s.toast("Animation ready", "success");
   } else if (job.kind === "matte") {
     s.toast("Subject found. Render a preview to see the new background.", "success");
   } else if (job.kind === "transcribe") {

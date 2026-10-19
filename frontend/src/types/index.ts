@@ -4,7 +4,7 @@ export type Style =
 export type Aspect = "16:9" | "9:16" | "1:1" | "4:5" | "original";
 export type Look = "none" | "warm" | "cool" | "cinematic" | "vivid" | "bw" | "faded";
 export type Quality = "draft" | "standard" | "high";
-export type NavKey = "media" | "ai" | "audio" | "text" | "captions" | "effects" | "templates";
+export type NavKey = "media" | "ai" | "audio" | "text" | "captions" | "effects" | "templates" | "animate";
 export type Intensity = "light" | "balanced" | "aggressive";
 export type DurationPreset = "15" | "30" | "60" | "90" | "custom" | "auto";
 export type MusicMood = "cinematic" | "energetic" | "relaxing" | "happy" | "dramatic";
@@ -323,7 +323,7 @@ export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 export interface Job {
   id: string;
   projectId: string;
-  kind: "ingest" | "generate" | "textvideo" | "render" | "export" | "transcribe" | "matte";
+  kind: "ingest" | "generate" | "textvideo" | "render" | "export" | "transcribe" | "matte" | "animate";
   status: JobStatus;
   stage: string | null;
   progress: number;

@@ -66,7 +66,7 @@ export function AudioProperties() {
     selectAudio(copy.id);
   };
   const remove = () => {
-    updateDoc((d) => (d.edl ? { ...d, settings: c.kind === "music" ? { ...d.settings, musicId: null, musicSource: "none" } : d.settings, edl: withAudioClips(d.edl, d.edl.audioClips.filter((x) => x.id !== c.id)) } : d));
+    updateDoc((d) => (d.edl ? { ...d, settings: c.kind === "music" ? { ...d.settings, musicId: null, musicSource: "none", musicMode: "none" } : d.settings, edl: withAudioClips(d.edl, d.edl.audioClips.filter((x) => x.id !== c.id)) } : d));
     selectAudio(null);
   };
 

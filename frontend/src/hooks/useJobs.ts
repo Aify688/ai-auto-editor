@@ -41,7 +41,8 @@ function runAutoEdit(doc: ProjectDoc) {
       highlightDetection: true,
       removeSilence: true,
       removeFillers: true,
-      musicSource: doc.settings.musicSource === "none" ? "auto" : doc.settings.musicSource,
+      // music: "choose" and "none" are kept as the user set them; only an unchosen/auto project gets generated music
+      ...(doc.settings.musicMode === "choose" || doc.settings.musicMode === "none" ? {} : { musicMode: "auto" as const, musicSource: "auto" as const }),
     },
   });
 }

@@ -48,6 +48,13 @@ export function ExportDialog() {
             {job!.result!.subtitlesFile && (
               <div className="mt-1 text-2xs text-fg-muted">Subtitles saved alongside the video as {job!.result!.subtitlesFile}</div>
             )}
+            {(job!.result!.credits ?? []).length > 0 && (
+              <div className="mx-auto mt-3 max-w-sm rounded-lg border border-line bg-panel2 p-2.5 text-left text-2xs text-fg-muted">
+                <div className="font-semibold text-fg">Music credits (required by the licence)</div>
+                {(job!.result!.credits as string[]).map((c) => <p key={c} className="mt-1 break-words">{c}</p>)}
+                <p className="mt-1 text-fg-faint">Saved next to the video as {job!.result!.creditsFile}. Paste it into your video description.</p>
+              </div>
+            )}
             <div className="mt-4 flex justify-center gap-2">
               <a href={api.downloadUrl(job!.id)} download className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-ink hover:bg-primary-hover">
                 <Download size={14} /> Download MP4

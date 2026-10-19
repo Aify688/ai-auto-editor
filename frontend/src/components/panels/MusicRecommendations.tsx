@@ -53,13 +53,13 @@ export function MusicRecommendations({ compact = false }: { compact?: boolean })
   const apply = (t: Reco["tracks"][number]) => {
     updateDoc((d) => d.edl ? {
       ...d,
-      settings: { ...d.settings, musicSource: "library", musicMood: t.mood, musicId: null, musicVolume: t.suggestedVolume },
+      settings: { ...d.settings, musicMode: "choose", musicSource: "library", musicMood: t.mood, musicId: null, musicVolume: t.suggestedVolume },
       edl: setPrimaryMusic(d.edl, { mediaId: t.id, volume: t.suggestedVolume }),
     } : d);
     toast(`"${t.title}" ${current ? "replaced the music" : "added"}. Render a preview to hear it.`, "success");
   };
   const none = () => {
-    updateDoc((d) => d.edl ? { ...d, settings: { ...d.settings, musicSource: "none", musicId: null }, edl: setPrimaryMusic(d.edl, null) } : d);
+    updateDoc((d) => d.edl ? { ...d, settings: { ...d.settings, musicMode: "none", musicSource: "none", musicId: null }, edl: setPrimaryMusic(d.edl, null) } : d);
   };
   const favourite = (id: string) => {
     const next = favs.includes(id) ? favs.filter((f) => f !== id) : [...favs, id];

@@ -5,7 +5,6 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { cancelJob, isActive, retryJob, startAutoEdit, startJob } from "../../hooks/useJobs";
 import { restoreRemoved } from "../../lib/edits";
-import { setPrimaryMusic } from "../../lib/timelineOps";
 import { fmtDuration } from "../../lib/format";
 import { MAX_DESCRIPTION, generationState } from "../../lib/generation";
 import { layout } from "../../lib/layout";
@@ -15,7 +14,7 @@ import { useStore } from "../../store/project";
 import type { AiSettings, Aspect, GenerationPlan, InstructionPlan, Job, ProjectDoc, Style } from "../../types";
 import { ClipProperties } from "../panels/ClipProperties";
 import { MusicRecommendations } from "../panels/MusicRecommendations";
-import { Button, Field, Segmented, Select, Slider, Toggle, cx } from "../ui/controls";
+import { Button, Field, Segmented, Slider, Toggle, cx } from "../ui/controls";
 
 const STYLE_ICON: Record<Style, typeof Zap> = {
   dynamic: Zap, cinematic: Clapperboard, vlog: Smartphone, travel: Mountain, marketing: Megaphone,
@@ -388,7 +387,6 @@ function EditSummary() {
 function Advanced() {
   const [open, setOpen] = useState(false);
   const st = useStore((s) => s.doc!.settings);
-  const audio = useStore((s) => s.media.filter((m) => m.kind === "audio" && m.status === "ready"));
   const set = useSettings();
 
   return (
@@ -414,28 +412,9 @@ function Advanced() {
             <Segmented label="Preview quality" value={st.resolution} onChange={(v) => set({ resolution: v })}
               options={[{ value: 720, label: "720p" }, { value: 1080, label: "1080p" }]} />
           </Field>
-          <Field label="Background music" hint={audio.length ? undefined : "Upload MP3/WAV in Media"}>
-            <Select
-              label="Background music"
-              className="w-36"
-              value={st.musicId ?? ""}
-              disabled={!audio.length}
-              options={[{ value: "", label: "None" }, ...audio.map((m) => ({ value: m.id, label: m.name }))]}
-              onChange={(v) =>
-                set({ musicId: v || null }, (d) =>
-                  setPrimaryMusic(d.edl!, v ? { mediaId: v, volume: d.settings.musicVolume } : null),
-                )
-              }
-            />
+          <Field label="Music" hint={st.musicMode === "none" ? "Off" : st.musicMode === "choose" ? "Your choice" : "Auto-selected"}>
+            <Button size="sm" onClick={() => useStore.getState().setNav("music")}>Open Music</Button>
           </Field>
-          {st.musicId && (
-            <Field label="Music volume" hint={`${Math.round(st.musicVolume * 100)}%`}>
-              <div className="w-36">
-                <Slider label="Music volume" min={0.05} max={1} step={0.05} value={st.musicVolume}
-                  onChange={(v) => set({ musicVolume: v }, (d) => d.edl!.music ? setPrimaryMusic(d.edl!, { volume: v }) : d.edl, "musicvol")} />
-              </div>
-            </Field>
-          )}
           {st.captions && (
             <Field label="Burn captions into video">
               <Toggle label="Burn captions" checked={st.burnCaptions} onChange={(v) => set({ burnCaptions: v }, (d) => ({ ...d.edl!, burnCaptions: v }))} />

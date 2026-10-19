@@ -4,7 +4,7 @@ export type Style =
 export type Aspect = "16:9" | "9:16" | "1:1" | "4:5" | "original";
 export type Look = "none" | "warm" | "cool" | "cinematic" | "vivid" | "bw" | "faded";
 export type Quality = "draft" | "standard" | "high";
-export type NavKey = "media" | "ai" | "audio" | "text" | "captions" | "effects" | "templates" | "animate";
+export type NavKey = "media" | "ai" | "audio" | "text" | "captions" | "effects" | "templates" | "animate" | "music";
 export type Intensity = "light" | "balanced" | "aggressive";
 export type DurationPreset = "15" | "30" | "60" | "90" | "custom" | "auto";
 export type MusicMood = "cinematic" | "energetic" | "relaxing" | "happy" | "dramatic";
@@ -37,6 +37,8 @@ export interface AiSettings {
   durationPreset: DurationPreset | null;
   musicSource: MusicSource;
   musicMood: MusicMood | null;
+  /** What the user chose in the Music panel; undefined = never chosen (Auto-edit picks music). */
+  musicMode?: "auto" | "choose" | "none" | null;
   subtitleLanguage: SubtitleLanguage;
   subtitlePreset: SubtitlePreset;
 }
@@ -297,6 +299,8 @@ export interface MediaInfo {
   peakStep?: number;
   videoCodec?: string;
   audioCodec?: string;
+  /** Set for tracks downloaded from a music provider: the credit the licence requires. */
+  attribution?: { text: string; license: string; licenseUrl: string | null; title: string; artist: string; source: string; trackId: string };
   bitrate?: number;
 }
 

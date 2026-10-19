@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config, db
 from .api import jobs as jobs_api
 from .api import media as media_api
+from .api import music as music_api
 from .api import projects, system
 from .services import media as media_svc
 from .services import pipeline  # noqa: F401  (registers job handlers)
@@ -35,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="FrameFlow", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
-for module in (projects, system, media_api, jobs_api):
+for module in (projects, system, media_api, jobs_api, music_api):
     app.include_router(module.router)
 app.include_router(projects.router_templates)
 

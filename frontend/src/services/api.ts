@@ -1,3 +1,4 @@
+import type { MusicAddResult, MusicProviderStatus, MusicSearch } from "../types/music";
 import type { AnimateOptions, ImageToVideoStatus } from "../types/animate";
 import type { Preferences, TtsStatus } from "../types/tts";
 import type { GenerationPlan, InstructionPlan, Job, Media, MusicLibraryTrack, MusicRecommendations, Project, ProjectDoc, ProjectSummary, SystemStatus, TemplateDef } from "../types";
@@ -78,6 +79,9 @@ export const api = {
     request<Media[]>(`/api/projects/${pid}/media/order`, { method: "PUT", body: json({ ids }) }),
   peaks: (url: string) => request<number[]>(url),
 
+  musicStatus: () => request<{ providers: MusicProviderStatus[] }>("/api/music/status"),
+  musicSearch: (q: string) => request<MusicSearch>(`/api/music/search?q=${encodeURIComponent(q)}`),
+  addMusic: (pid: string, trackId: string) => request<MusicAddResult>(`/api/projects/${pid}/music/add`, { method: "POST", body: json({ trackId }) }),
   imageToVideo: () => request<ImageToVideoStatus>("/api/system/image-to-video"),
   animate: (pid: string, body: AnimateOptions) => request<Job>(`/api/projects/${pid}/animate`, { method: "POST", body: json(body) }),
   generate: (pid: string, doc: ProjectDoc) =>

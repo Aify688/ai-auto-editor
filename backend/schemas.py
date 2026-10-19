@@ -48,6 +48,9 @@ class AiSettings(BaseModel):
     durationPreset: Optional[DurationPreset] = None  # UI convenience; "custom"/"auto" defer to targetDuration
     musicSource: MusicSource = "none"               # "upload" uses musicId; "library"/"auto" need real tracks
     musicMood: Optional[MusicMood] = None            # only meaningful when musicSource == "auto"
+    # What the user chose in the Music panel. None = never chosen (Auto-edit picks music for them). "choose" keeps the
+    # track they picked, with its trim/start/fades, across Auto-edit; "none" keeps the video music-free.
+    musicMode: Optional[Literal["auto", "choose", "none"]] = None
     subtitleLanguage: SubtitleLanguage = "auto"      # hint passed to the transcription engine
     subtitlePreset: Literal["standard", "bold", "minimal", "social", "cinematic"] = "standard"
 

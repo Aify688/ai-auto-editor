@@ -9,7 +9,7 @@ from .. import config
 from ..schemas import Edl, ProjectDoc
 from ..workers import jobs
 from ..workers.jobs import JobContext, JobFailed
-from . import analysis, beats, editing, imagevideo, instructions, matting, music_library, music_reco, preferences, projects, rendering, system, textvideo
+from . import analysis, beats, editing, imagevideo, instructions, matting, music_library, music_reco, music_search, preferences, projects, rendering, system, textvideo
 from . import media as media_svc
 from .media import STILL_SECONDS
 
@@ -119,6 +119,27 @@ def _mark_fillers(rows: list[dict], data: dict, ctx: JobContext, language: str) 
     return found
 
 
+def _carry_manual_audio(doc: ProjectDoc, edl: dict) -> None:
+    """Auto-edit rebuilds the timeline, but not what the user decided: a track they chose keeps its volume, trim, start
+    and fades, music they turned off stays off, and sounds they added (voiceover) stay. Exactly one music track results."""
+    prev = doc.edl.audioClips if doc.edl else []
+    mode = doc.settings.musicMode
+    kept = [c.model_dump() for c in prev if c.kind != "music"]
+    music = [c.model_dump() for c in prev if c.kind == "music"]
+    if mode == "none":
+        edl["audioClips"], edl["music"] = kept, None
+        return
+    if mode == "choose" and music:
+        chosen = music[0]
+        edl["audioClips"] = [chosen, *kept]
+        edl["music"] = {"mediaId": chosen["mediaId"], "volume": chosen["volume"], "duck": chosen["duck"]}
+        edl["notes"].append("Kept the music you chose.")
+        return
+    # auto: the generated music (if any) is the only music track; user-added sounds are kept alongside
+    generated = [c for c in edl.get("audioClips", []) if c.get("kind") == "music"][:1]
+    edl["audioClips"] = [*generated, *kept]
+
+
 def _render_preview(ctx: JobContext, pid: str, edl: dict, resolution: int) -> dict:
     out = config.project_dir(pid) / "renders" / f"preview_{ctx.id}.mp4"
     res = rendering.render(edl, rendering.preview_export(resolution), out, lambda f, msg: ctx.update(f, msg))
@@ -206,6 +227,7 @@ def generate(ctx: JobContext, pid: str, params: dict) -> dict:
         engine = "PySceneDetect" if doc.settings.sceneDetection else "scene detection off"
         edl["notes"].insert(1, f"Analyzed {len(ready)} file(s): {scene_total} scene(s) ({engine}).")
 
+    _carry_manual_audio(doc, edl)
     if fillers:
         edl["notes"].insert(1, f"Cut {fillers} filler word(s) (um, uh, ...).")
     if plan is not None:
@@ -357,6 +379,11 @@ def export(ctx: JobContext, pid: str, params: dict) -> dict:
         raise JobFailed(str(e))
     ctx.stage("finalize")
     rendering.write_sidecar(out, edl, export_cfg)
+    credits = music_search.credits_for(edl.get("audioClips") or [])
+    credits_path = None
+    if credits:
+        credits_path = out.with_suffix(".credits.txt")
+        credits_path.write_text("Music credits (required by the licences of the tracks used):\n\n" + "\n".join(f"- {c}" for c in credits) + "\n")
     srt_path = None
     if handling == "srt":
         srt_text = rendering.build_subtitle_text(edl, "srt")
@@ -366,7 +393,8 @@ def export(ctx: JobContext, pid: str, params: dict) -> dict:
     return {"path": str(out), "folder": str(out.parent), "url": media_svc.url_for(out), "filename": out.name,
             "size": res["size"], "duration": res["duration"], "width": res["width"], "height": res["height"],
             "fps": res["fps"], "warnings": res["warnings"],
-            "subtitlesFile": srt_path.name if srt_path else None}
+            "subtitlesFile": srt_path.name if srt_path else None,
+            "credits": credits, "creditsFile": credits_path.name if credits_path else None}
 
 
 # ------------------------------------------------------------------ AI background removal

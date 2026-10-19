@@ -9,6 +9,7 @@ import { TopBar } from "./components/layout/TopBar";
 import { MediaPanel } from "./components/media/MediaPanel";
 import { AudioPanel } from "./components/panels/AudioPanel";
 import { CaptionsPanel } from "./components/panels/CaptionsPanel";
+import { MusicPanel } from "./components/panels/MusicPanel";
 import { AnimatePanel } from "./components/panels/AnimatePanel";
 import { EffectsPanel } from "./components/panels/EffectsPanel";
 import { InsightsPanel } from "./components/panels/InsightsPanel";
@@ -27,6 +28,7 @@ const PANELS: Record<NavKey, () => JSX.Element> = {
   media: MediaPanel,
   ai: InsightsPanel,
   audio: AudioPanel,
+  music: MusicPanel,
   text: TextPanel,
   captions: CaptionsPanel,
   effects: EffectsPanel,
